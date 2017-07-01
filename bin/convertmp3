@@ -1,0 +1,69 @@
+#!/usr/bin/python3
+from __future__ import print_function
+import sys
+import os
+import os.path as path
+import glob
+import concurrent.futures
+import multiprocessing
+import subprocess
+
+extensions = ['mp3', 'm4a', 'wav', 'aac']
+
+if len(sys.argv) < 2 or '--help' in sys.argv[1]:
+	print('usage: %s [dir] [outputdir]'%sys.argv[0])
+	print('converts all audio files in a directory to mp3/128kb')
+	print('supported extensions:', str.join(', ', extensions))
+	print('creates new directory [dir]_128 if [outputdir] is not specified')
+
+inputdir = path.abspath(sys.argv[1])
+outputdir = inputdir + '_128'
+
+if len(sys.argv) > 2:
+	outputdir = path.abspath(sys.argv[2])
+
+inputfiles = []
+
+for ext in extensions:
+	inputfiles.extend(glob.glob(inputdir + '/*.' + ext))
+	inputfiles.extend(glob.glob(inputdir + '/**/*.' + ext))
+
+inputfiles = [path.relpath(filepath, inputdir) for filepath in inputfiles]
+
+
+def convert(f):
+	print('converting', f)
+
+	fin = inputdir + '/' + f
+	fout = outputdir + '/' + os.path.splitext(f)[0] + '.mp3'
+
+	os.remove(fout) if path.isfile(fout) else None
+
+	if not path.isdir(path.dirname(fout)):
+		os.makedirs(path.dirname(fout))
+
+	command = [
+		'ffmpeg',
+		'-i', fin,
+		'-codec:a', 'libmp3lame',
+		'-q:a', '5',
+		'-vn',
+		'-y',
+		'-loglevel', 'quiet',
+		fout
+	]
+
+	retcode = subprocess.call(command)
+
+	if retcode:
+		print('ffmpeg returned ', retcode, 'for', f)
+
+
+with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+	for f in inputfiles:
+		executor.submit(convert, f)
+
+	executor.shutdown(wait=True)
+
+print('done')
+os.system('stty echo')
