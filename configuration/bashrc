@@ -3,6 +3,9 @@ HISTSIZE=5000
 HISTFILESIZE=5000
 HISTIGNORE="&:exit:clear:pwd:?:??"	#ignore one and two char commands
 
+BROWSER=/usr/bin/chromium
+EDITOR=/usr/bin/nano
+
 shopt -s histappend
 shopt -s globstar
 shopt -s cmdhist
