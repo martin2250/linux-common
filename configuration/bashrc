@@ -22,6 +22,7 @@ alias dd='dd status=progress'
 alias open='run xdg-open'
 alias grep='grep -n --color=auto'
 alias find='find 2>/dev/null'	#discard permission errors
+alias pdfcombine='gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -dPDFSETTINGS=/prepress -sOutputFile='
 
 function fuck () {
 	TF_PREVIOUS=$(fc -ln -1);
