@@ -3,10 +3,20 @@ binding=['MonBrightnessDown']
 command='xbacklight -dec 5'
 name='xbacklight -dec 5'
 
+[custom-keybindings/custom5]
+binding=['<Super>F2']
+command='xbacklight -dec 1'
+name='xbacklight -dec 1'
+
 [custom-keybindings/custom1]
 binding=['MonBrightnessUp']
 command='xbacklight -inc 5'
 name='xbacklight -inc 5'
+
+[custom-keybindings/custom4]
+binding=['<Super>F3']
+command='xbacklight -inc 1'
+name='xbacklight -inc 1'
 
 [custom-keybindings/custom0]
 binding=['<Primary><Shift>Escape']
@@ -19,7 +29,7 @@ command='pactl set-sink-volume 0 +10%'
 name='volume up no limit'
 
 [/]
-custom-list=['custom0', 'custom1', 'custom2', 'custom3']
+custom-list=['custom0', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
 
 [media-keys]
 video-outputs=['XF86Display']
