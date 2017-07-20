@@ -1,3 +1,9 @@
+## Link ~/.bashrc
+```
+rm ~/.bashrc
+ln -s ~/linux-common/configuration/bashrc ~/.bashrc
+```
+
 ## Use all cores for yaourt compiling
 `MAKEFLAGS="-j6"` in /etc/makepkg.conf
 
