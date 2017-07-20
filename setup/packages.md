@@ -1,6 +1,7 @@
 ```bash
 sudo pacman -S gitkraken inkscape atom noto-fonts-emoji
 yaourt -S freefilesync
+sudo pip install thefuck
 ```
 
 ## Latex + Python

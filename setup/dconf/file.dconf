@@ -1,0 +1,41 @@
+[custom-keybindings/custom2]
+binding=['MonBrightnessDown']
+command='xbacklight -dec 5'
+name='xbacklight -dec 5'
+
+[custom-keybindings/custom1]
+binding=['MonBrightnessUp']
+command='xbacklight -inc 5'
+name='xbacklight -inc 5'
+
+[custom-keybindings/custom0]
+binding=['<Primary><Shift>Escape']
+command='gnome-system-monitor'
+name='taskmgr'
+
+[custom-keybindings/custom3]
+binding=['<Primary>F10']
+command='pactl set-sink-volume 0 +10%'
+name='volume up no limit'
+
+[/]
+custom-list=['custom0', 'custom1', 'custom2', 'custom3']
+
+[media-keys]
+video-outputs=['XF86Display']
+on-screen-keyboard=['<Super>k']
+area-screenshot-clip=['Print']
+calculator=['<Super>F1']
+screenshot=@as []
+
+[wm]
+toggle-above=['<Super>t']
+switch-to-workspace-1=['<Super>1']
+switch-to-workspace-2=['<Super>2']
+switch-to-workspace-3=['<Super>3']
+move-to-workspace-1=['<Alt>1']
+move-to-workspace-2=['<Alt>2']
+move-to-workspace-3=['<Alt>3']
+move-to-workspace-4=['<Alt>4']
+switch-to-workspace-4=['<Super>4']
+switch-to-workspace-up=['<Super>y']

@@ -2,10 +2,11 @@
 ```
 rm ~/.bashrc
 ln -s ~/linux-common/configuration/bashrc ~/.bashrc
+ln -s ~/linux-common/bin ~/.bin
 ```
 
 ## Use all cores for yaourt compiling
-`MAKEFLAGS="-j6"` in /etc/makepkg.conf
+`MAKEFLAGS="-j6"` in `/etc/makepkg.conf`
 
 ## Disable yaourt edit PKGBUILD
 ```
@@ -16,4 +17,6 @@ EDITFILES=0
 in `~/.yaourtrc`
 
 ## Change numpad comma to dot
-`dconf write /org/gnome/libgnomekbd/keyboard/options "['kpdl\tkpdl:dotoss']"`
+```
+dconf write /org/gnome/libgnomekbd/keyboard/options "['kpdl\tkpdl:dotoss']"
+```
