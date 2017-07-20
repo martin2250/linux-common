@@ -1,0 +1,3 @@
+[org/cinnamon/muffin/]
+tile-maximize=true
+placement-mode='automatic'
