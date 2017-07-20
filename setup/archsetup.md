@@ -8,3 +8,6 @@ BUILD_NOCONFIRM=1
 EDITFILES=0
 ```
 in `~/.yaourtrc`
+
+## Change numpad comma to dot
+`dconf write /org/gnome/libgnomekbd/keyboard/options "['kpdl\tkpdl:dotoss']"`
