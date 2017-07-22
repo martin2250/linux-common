@@ -1,6 +1,6 @@
 ```bash
-sudo pacman -S gitkraken inkscape atom noto-fonts-emoji
-yaourt -S freefilesync
+sudo pacman -S gitkraken inkscape atom noto-fonts-emoji gimp
+yaourt -S freefilesync pix
 sudo pip install thefuck
 ```
 
