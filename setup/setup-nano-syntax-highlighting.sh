@@ -1,4 +1,12 @@
 #!/bin/bash
 
 git clone https://github.com/scopatz/nanorc.git ~/.nano
-echo "include ~/.nano/*.nanorc" >> ~/.nanorc
+
+cat >> ~/.nanorc <<EOL
+include ~/.nano/*.nanorc
+set tabsize 4
+set autoindent
+set linenumbers
+set smarthome
+set smooth
+EOL
