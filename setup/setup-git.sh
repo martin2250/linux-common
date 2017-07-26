@@ -1,0 +1,7 @@
+git config --global pull.rebase true
+git config --global commit.verbose true
+
+sudo pacman -S libgnome-keyring
+cd /usr/share/git/credential/gnome-keyring
+sudo make
+git config --global credential.helper /usr/share/git/credential/gnome-keyring/git-credential-gnome-keyring

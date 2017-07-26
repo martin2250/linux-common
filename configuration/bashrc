@@ -24,6 +24,10 @@ alias grep='grep -n --color=auto'
 alias find='find 2>/dev/null'	#discard permission errors
 alias pdfcombine='gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -dPDFSETTINGS=/prepress -sOutputFile='
 
+alias gca='git commit -a'
+alias gp='git pull'
+alias gpu='git push'
+
 function fuck () {
 	TF_PREVIOUS=$(fc -ln -1);
 	TF_PYTHONIOENCODING=$PYTHONIOENCODING;
