@@ -1,3 +1,12 @@
 [org/cinnamon/muffin/]
 tile-maximize=true
 placement-mode='automatic'
+
+[org/nemo/preferences/]
+quick-renames-with-pause-in-between=true
+enable-delete=false
+
+[org/cinnamon/desktop/media-handling/]
+automount=false
+automount-open=false
+autorun-never=true
