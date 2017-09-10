@@ -13,7 +13,7 @@ shopt -s cdspell
 shopt -s checkwinsize
 
 source ~/.bin/setupprompt.sh
-export PATH=$PATH:~/.bin
+export PATH=$PATH:~/.bin:/home/$USER/Android/Sdk/platform-tools
 
 alias sudo='sudo '	#make aliases work with sudo
 alias ls='ls --color=auto'
