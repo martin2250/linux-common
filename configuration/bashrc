@@ -25,7 +25,7 @@ alias find='find 2>/dev/null'	#discard permission errors
 alias pdfcombine='gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -dPDFSETTINGS=/prepress -sOutputFile='
 
 alias gca='git commit -a'
-alias gp='git pull'
+alias gp='git pull --rebase'
 alias gpu='git push'
 
 function fuck () {
@@ -82,6 +82,13 @@ function transfer { curl --upload-file $1 https://transfer.sh/$1; echo; }
 
 #start program and detatch from shell
 function run { $@ > /dev/null 2>&1 & disown > /dev/null 2>&1; }
+
+#reload udev rules
+function udevreload
+{
+sudo udevadm control --reload-rules;
+sudo udevadm trigger;
+}
 
 #enable colors in less
 export LESS_TERMCAP_mb=$'\E[01;31m'

@@ -1,8 +1,3 @@
-[custom-keybindings/custom6]
-binding=['<Primary>F2']
-command='xbacklight -dec 1'
-name='xbacklight -dec 1'
-
 [custom-keybindings/custom2]
 binding=['MonBrightnessDown']
 command='xbacklight -dec 5'
@@ -34,13 +29,13 @@ command='pactl set-sink-volume 0 +10%'
 name='volume up no limit'
 
 [/]
-custom-list=['custom0', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'custom6']
+custom-list=['custom0', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
 
 [media-keys]
 video-outputs=['XF86Display']
 on-screen-keyboard=['<Super>k']
 area-screenshot-clip=['Print']
-calculator=['<Super>F1']
+calculator=['<Super>F1', 'Calculator']
 screenshot=@as []
 
 [wm]

@@ -8,7 +8,7 @@ import concurrent.futures
 import multiprocessing
 import subprocess
 
-extensions = ['mp3', 'm4a', 'wav', 'aac']
+extensions = ['mp3', 'm4a', 'wav', 'aac', 'flac']
 
 if len(sys.argv) < 2 or '--help' in sys.argv[1]:
 	print('usage: %s [dir] [outputdir]'%sys.argv[0])
