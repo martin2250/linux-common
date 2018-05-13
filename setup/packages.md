@@ -1,5 +1,5 @@
 ```bash
-sudo pacman -S gitkraken inkscape atom noto-fonts-emoji gimp vlc puddletag chromium-widevine
+sudo pacman -S gitkraken inkscape atom noto-fonts-emoji gimp vlc puddletag chromium-widevine libqalculate qalculate-gtk
 yaourt -S freefilesync pix
 sudo pip install thefuck
 ```
