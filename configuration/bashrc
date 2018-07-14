@@ -27,6 +27,8 @@ alias pdfcombine='gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -dPDFSETTINGS=/prepr
 alias gca='git commit -a'
 alias gp='git pull --rebase'
 alias gpu='git push'
+alias cg='xclip -selection c -o'	# get clipboard to stdout
+alias cs='xclip -selection c'		# set clipboard from stdin
 
 function fuck () {
 	TF_PREVIOUS=$(fc -ln -1);
