@@ -3,7 +3,7 @@ from __future__ import print_function
 import sys
 import os
 import os.path as path
-import glob
+import glob2
 import concurrent.futures
 import multiprocessing
 import subprocess
@@ -22,14 +22,16 @@ outputdir = inputdir + '_128'
 if len(sys.argv) > 2:
 	outputdir = path.abspath(sys.argv[2])
 
+print('input directory:', inputdir)
+print('output directory:', outputdir)
+
 inputfiles = []
 
 for ext in extensions:
-	inputfiles.extend(glob.glob(inputdir + '/*.' + ext))
-	inputfiles.extend(glob.glob(inputdir + '/**/*.' + ext))
+	inputfiles.extend(glob2.glob(inputdir + '/*.' + ext))
+	inputfiles.extend(glob2.glob(inputdir + '/**/*.' + ext))
 
 inputfiles = [path.relpath(filepath, inputdir) for filepath in inputfiles]
-
 
 def convert(f):
 	print('converting', f)
