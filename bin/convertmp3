@@ -45,9 +45,10 @@ def convert(f):
 	command = [
 		'ffmpeg',
 		'-i', fin,
-		'-codec:a', 'libmp3lame',
+		'-map', '0',
+		'-c:v', 'copy',
+		'-c:a', 'libmp3lame',
 		'-q:a', '5',
-		'-vn',
 		'-y',
 		'-loglevel', 'quiet',
 		fout
