@@ -8,7 +8,7 @@ import concurrent.futures
 import multiprocessing
 import subprocess
 
-extensions = ['mp3', 'm4a', 'wav', 'aac', 'flac']
+extensions = ['mp3', 'm4a', 'wav', 'aac', 'flac', 'wma']
 
 if len(sys.argv) < 2 or '--help' in sys.argv[1]:
 	print('usage: %s [dir] [outputdir]'%sys.argv[0])
@@ -33,13 +33,22 @@ for ext in extensions:
 
 inputfiles = [path.relpath(filepath, inputdir) for filepath in inputfiles]
 
-def convert(f):
-	print('converting', f)
+def convert(f, run=3):
+	if run == 0:
+		print('too many retries:', f)
+		return
+		
+	if path.isfile(fout) and run != 3:
+		print('file exists:', f)
+		return
+		
+	print('run', run, 'converting', f)
 
 	fin = inputdir + '/' + f
 	fout = outputdir + '/' + os.path.splitext(f)[0] + '.mp3'
 
-	os.remove(fout) if path.isfile(fout) else None
+#	os.remove(fout) if path.isfile(fout) else None
+
 
 	if not path.isdir(path.dirname(fout)):
 		os.makedirs(path.dirname(fout))
@@ -60,6 +69,7 @@ def convert(f):
 
 	if retcode:
 		print('ffmpeg returned ', retcode, 'for', f)
+		convert(f, run - 1)
 
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
