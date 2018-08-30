@@ -12,6 +12,49 @@ shopt -s cmdhist
 shopt -s cdspell
 shopt -s checkwinsize
 
+source /usr/share/fzf/key-bindings.bash
+source /usr/share/fzf/completion.bash
+
+# fe [FUZZY PATTERN] - Open the selected file with the default editor
+#   - Bypass fuzzy finder if there's only one match (--select-1)
+#   - Exit if there's no match (--exit-0)
+fe() {
+  local files
+  IFS=$'\n' files=($(fzf-tmux --query="$1" --multi --select-1 --exit-0 --preview "bat --color \"always\" {}"))
+  [[ -n "$files" ]] && ${EDITOR} "${files[@]}"
+}
+
+# fdr - cd to selected parent directory
+fdr() {
+  local declare dirs=()
+  get_parent_dirs() {
+    if [[ -d "${1}" ]]; then dirs+=("$1"); else return; fi
+    if [[ "${1}" == '/' ]]; then
+      for _dir in "${dirs[@]}"; do echo $_dir; done
+    else
+      get_parent_dirs $(dirname "$1")
+    fi
+  }
+  local DIR=$(get_parent_dirs $(realpath "${1:-$PWD}") | fzf-tmux --tac)
+  cd "$DIR"
+}
+
+
+# Another fd - cd into the selected directory
+# This one differs from the above, by only showing the sub directories and not
+#  showing the directories within those.
+fd() {
+  DIR=`find * -maxdepth 0 -type d -print 2> /dev/null | fzf-tmux` \
+    && cd "$DIR"
+}
+
+# fda - including hidden directories
+fda() {
+  local dir
+  dir=$(find ${1:-.} -type d 2> /dev/null | fzf +m) && cd "$dir"
+}
+
+
 source ~/.bin/setupprompt.sh
 export PATH=$PATH:~/.bin:/home/$USER/Android/Sdk/platform-tools
 
@@ -29,6 +72,10 @@ alias gp='git pull --rebase'
 alias gpu='git push'
 alias cg='xclip -selection c -o'	# get clipboard to stdout
 alias cs='xclip -selection c'		# set clipboard from stdin
+
+alias cat='bat'
+alias top='htop'
+alias du='ncdu --color dark -rr -x --exclude .git --exclude node_modules'
 
 function fuck () {
 	TF_PREVIOUS=$(fc -ln -1);
