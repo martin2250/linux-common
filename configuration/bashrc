@@ -56,7 +56,8 @@ fda() {
 
 
 source ~/.bin/setupprompt.sh
-export PATH=$PATH:~/.bin:/home/$USER/Android/Sdk/platform-tools
+export GOPATH=~/go
+export PATH=$PATH:~/.bin:/home/$USER/Android/Sdk/platform-tools:$GOPATH/bin
 
 alias sudo='sudo '	#make aliases work with sudo
 alias ls='ls --color=auto'
