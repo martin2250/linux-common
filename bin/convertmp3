@@ -33,19 +33,22 @@ for ext in extensions:
 
 inputfiles = [path.relpath(filepath, inputdir) for filepath in inputfiles]
 
+print(f'found {len(inputfiles)} files')
+
 def convert(f, run=3):
+	fin = inputdir + '/' + f
+	fout = outputdir + '/' + os.path.splitext(f)[0] + '.mp3'
+
 	if run == 0:
 		print('too many retries:', f)
 		return
-		
+
 	if path.isfile(fout) and run != 3:
 		print('file exists:', f)
 		return
-		
+
 	print('run', run, 'converting', f)
 
-	fin = inputdir + '/' + f
-	fout = outputdir + '/' + os.path.splitext(f)[0] + '.mp3'
 
 #	os.remove(fout) if path.isfile(fout) else None
 
