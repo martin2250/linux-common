@@ -74,6 +74,8 @@ def convert(f, run=3):
 		print('ffmpeg returned ', retcode, 'for', f)
 		convert(f, run - 1)
 
+	if not path.isfile(fout):
+		convert(f, run - 1)
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
 	for f in inputfiles:
