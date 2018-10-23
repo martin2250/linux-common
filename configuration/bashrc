@@ -57,7 +57,7 @@ fda() {
 
 source ~/.bin/setupprompt.sh
 export GOPATH=~/go
-export PATH=$PATH:~/.bin:/home/$USER/Android/Sdk/platform-tools:$GOPATH/bin
+export PATH=$PATH:~/.bin:/home/$USER/Android/Sdk/platform-tools:$GOPATH/bin:/home/$USER/Desktop/bachelor-thesis-data/script
 
 alias sudo='sudo '	#make aliases work with sudo
 alias ls='ls --color=auto'
@@ -77,19 +77,6 @@ alias cs='xclip -selection c'		# set clipboard from stdin
 alias cat='bat'
 alias top='htop'
 alias du='ncdu --color dark -rr -x --exclude .git --exclude node_modules'
-
-function fuck () {
-	TF_PREVIOUS=$(fc -ln -1);
-	TF_PYTHONIOENCODING=$PYTHONIOENCODING;
-	export TF_ALIAS=fuck;
-	export TF_SHELL_ALIASES=$(alias);
-	export PYTHONIOENCODING=utf-8;
-	TF_CMD=$(
-	    thefuck $TF_PREVIOUS THEFUCK_ARGUMENT_PLACEHOLDER $@
-	) && eval $TF_CMD;
-	export PYTHONIOENCODING=$TF_PYTHONIOENCODING;
-	history -s $TF_CMD;
-}
 
 function extract () {
 	if [ -f $1 ] ; then

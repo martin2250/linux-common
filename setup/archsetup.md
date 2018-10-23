@@ -23,8 +23,8 @@ dconf write /org/gnome/libgnomekbd/keyboard/options "['kpdl\tkpdl:dotoss']"
 
 ## give user serial port permissions
 ```
-sudo useradd -G uucp $USER
-sudo useradd -G lock $USER
+sudo usermod -aG uucp $USER
+sudo usermod -aG lock $USER
 ```
 
 ## dconf

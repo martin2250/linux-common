@@ -9,4 +9,5 @@ set autoindent
 set linenumbers
 set smarthome
 set smooth
+set nowrap
 EOL
