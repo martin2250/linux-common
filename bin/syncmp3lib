@@ -12,8 +12,13 @@ import sys
 import time
 from dataclasses import dataclass
 
+# TODO:
+# check for rogue (empty) folders
+# combine rogue input + output
+
 parser = argparse.ArgumentParser(
-	description='converts a music library to lower quality mp3')
+	description='converts a music library to lower quality mp3',
+	epilog='can be used to only scale cover images by specifying quality \'copy\'')
 
 
 def check_directory_exists(dir):
@@ -35,6 +40,8 @@ parser.add_argument('--cover-scale', metavar='SIZE',
                     type=int, help='rescale covers to SIZExSIZE, a size of 0 discards the cover, omitting this argument copies the cover')
 parser.add_argument('--limit', metavar='COUNT', type=int,
                     help='only convert the first COUNT files')
+parser.add_argument('--threads', metavar='THREADS', type=int,
+                    help='number of ffmpeg subprocesses to use, use all cores by default')
 parser.add_argument('-y', '--yes', action='store_true',
                     help='skip action selection menu')
 
@@ -101,13 +108,33 @@ for directory_relative, filename in listfiles(inputpath):
 
 print(f'found {len(files)} music files')
 
+
+def delete_checkdir(path):
+	"""delete file or directory, also delete parent directories if they are empty"""
+	while True:
+		if os.path.isfile(path):
+			os.remove(path)
+		else:
+			os.rmdir(path)
+		path = os.path.dirname(path)
+		if os.listdir(path):
+			break
+
+
+def delete_rogues():
+	global rogue_files_input, rogue_files_output
+	for rogue_file in (rogue_files_input + rogue_files_output):
+		print(f' > {rogue_file}')
+		delete_checkdir(rogue_file)
+	rogue_files_input = []
+	rogue_files_output = []
+
+
 for name, rogue_files in [('input', rogue_files_input), ('output', rogue_files_output)]:
 	if rogue_files:
 		print(f'found {len(rogue_files)} rogue files in the {name} directory{", removing rogue files" if args.clean else ""}:')
-		for rogue_file in rogue_files:
-			print(f' > {rogue_file}')
-			if args.clean:
-				os.remove(rogue_file)
+		if args.clean:
+			delete_rogues()
 
 
 files = [file for file in files if file.inputmtime != file.outputmtime]
@@ -155,25 +182,35 @@ def get_command(file):
 if not args.yes:
 	while True:
 		print("""select action:
-		[l]ist files to be converted
-		[s]how ffmpeg commands
-		[y]/[c]onvert
+		[list] files to be converted
+		[list cmd] (show ffmpeg commands)
+		[list rogue] files
+		[delete rogue] files
+		[y]/[convert]
 		[n]/[q]uit""")
-		action = input('[lsycnq]:')
-		if action in ['y', 'c']:
+		action = input('action: ').strip()
+
+		if action in ['y', 'convert']:
 			break
 		elif action in ['n', 'q']:
 			exit(0)
-		elif action == 'l':
+		elif action == 'list':
 			for file in files:
 				print(file.input)
 				if file.outputmtime is None:
 					print('does not exist in the output directory')
 				else:
 					print(f'in: {file.inputmtime} out: {file.outputmtime}')
-		elif action == 's':
+		elif action == 'list cmd':
 			for file in files:
 				print(' '.join(get_command(file)))
+		elif action == 'list rogue':
+			for rogue_file in (rogue_files_input + rogue_files_output):
+				print(f' > {rogue_file}')
+		elif action == 'delete rogue':
+			delete_rogues()
+		else:
+			print('unsupported action')
 
 
 def convert(file):
@@ -204,7 +241,7 @@ workers = []
 errors = []
 
 try:
-	cpu_count = multiprocessing.cpu_count()
+	cpu_count = args.threads or multiprocessing.cpu_count()
 	total = len(files)
 	done = 0
 	time_start = time.time()
