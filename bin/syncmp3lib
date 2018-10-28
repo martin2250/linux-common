@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import argparse
 import concurrent.futures
+import datetime
 import multiprocessing
 import os
 import os.path as path
@@ -23,17 +24,19 @@ def check_directory_exists(dir):
 
 
 parser.add_argument('inputpath', metavar='IN',
-                    type=check_directory_exists, help='input path')
+                    type=check_directory_exists, help='input path, must exist')
 parser.add_argument('outputpath', metavar='OUT',
-                    type=os.path.abspath, help='output path')
+                    type=os.path.abspath, help='output path, will be created if it doesn\'t exist')
 parser.add_argument('mp3_quality', metavar='Q', type=str,
-                    help='quality argument for libmp3lame (0-9 or copy). copy does not work with input files other than *.mp3', choices=list(range(0, 10)) + ['copy'])
-parser.add_argument('-n', '--dry-run', action='store_true',
-                    help='print ffmpeg commands instead of executing them')
+                    help='quality argument for libmp3lame (0-9 or copy). copy does not work with input files other than *.mp3', choices=list(map(str, range(0, 10))) + ['copy'])
+parser.add_argument('-c', '--clean', action='store_true',
+                    help='remove rogue files in input and output')
 parser.add_argument('--cover-scale', metavar='SIZE',
-                    type=int, help='rescale covers to SIZExSIZE, a size of 0 discards the cover')
+                    type=int, help='rescale covers to SIZExSIZE, a size of 0 discards the cover, omitting this argument copies the cover')
 parser.add_argument('--limit', metavar='COUNT', type=int,
                     help='only convert the first COUNT files')
+parser.add_argument('-y', '--yes', action='store_true',
+                    help='skip action selection menu')
 
 args = parser.parse_args()
 
@@ -43,56 +46,71 @@ outputpath = args.outputpath
 print('input path: ', inputpath)
 print('output path:', outputpath)
 
-print('scanning directory')
-
 
 @dataclass
 class InputFile:
 	input: str
 	output: str
 	inputmtime: float
+	outputmtime: float  # None if file doesn't exist
 
 
 files = []
-rogue_files = []
+rogue_files_input = []
+rogue_files_output = []
 
 extensions = ['.mp3', '.m4a', '.wav', '.aac', '.flac', '.wma']
 
-for directory, _, filenames in os.walk(inputpath):
-	for filename in filenames:
-		filename_base, extension = os.path.splitext(filename)
-		file_path = os.path.join(directory, filename)
-		if extension in extensions:
-			directory_output = os.path.join(
-				outputpath, os.path.relpath(directory, inputpath))
-			file_path_output = os.path.join(directory_output, filename_base + '.mp3')
-			files.append(InputFile(file_path, file_path_output,
-                          os.path.getmtime(file_path)))
-		else:
-			rogue_files.append(file_path)
+
+def listfiles(path):
+	""" get a list of all files in path, recursively"""
+	for directory_name, _, file_names in os.walk(path):
+		for file_name in file_names:
+			yield os.path.relpath(directory_name, path), file_name
+
+
+print('scanning output directory', end='')
+sys.stdout.flush()  # doesn't flush automatically without line ending
+rogue_files_output = [os.path.normpath(os.path.join(outputpath, d, f))
+                      for d, f in listfiles(outputpath)]
+print(f', found {len(rogue_files_output)} files')
+
+print('scanning input directory')
+
+for directory_relative, filename in listfiles(inputpath):
+	filename_base, extension = os.path.splitext(filename)
+
+	file_path_input = os.path.normpath(
+		os.path.join(inputpath, directory_relative, filename))
+
+	if extension in extensions:
+		file_path_output = os.path.normpath(os.path.join(
+			outputpath, directory_relative, filename_base + '.mp3'))
+
+		input_mtime = os.path.getmtime(file_path_input)
+		output_mtime = os.path.getmtime(
+			file_path_output) if os.path.isfile(file_path_output) else None
+
+		files.append(InputFile(file_path_input, file_path_output,
+                         input_mtime, output_mtime))
+
+		if file_path_output in rogue_files_output:
+			rogue_files_output.remove(file_path_output)
+	else:
+		rogue_files_input.append(file_path_input)
 
 print(f'found {len(files)} music files')
-if rogue_files:
-	print(f'found {len(rogue_files)} rogue files:')
-	for rogue_file in rogue_files:
-		print(f' > {rogue_file}')
+
+for name, rogue_files in [('input', rogue_files_input), ('output', rogue_files_output)]:
+	if rogue_files:
+		print(f'found {len(rogue_files)} rogue files in the {name} directory{", removing rogue files" if args.clean else ""}:')
+		for rogue_file in rogue_files:
+			print(f' > {rogue_file}')
+			if args.clean:
+				os.remove(rogue_file)
 
 
-print('checking whether files need to be converted')
-
-
-def compare_files(file):
-	"""	determine wether file needs to be converted
-	args:
-	input -- path of the input file
-	output -- path of the output file
-	"""
-	if not os.path.isfile(file.output):
-		return True
-	return os.path.getmtime(file.output) != file.inputmtime
-
-
-files = [file for file in files if compare_files(file)]
+files = [file for file in files if file.inputmtime != file.outputmtime]
 print(f'{len(files)} files need to be converted')
 
 if args.limit is not None:
@@ -115,7 +133,7 @@ def get_command(file):
 	else:
 		command += [
 			'-c:a', 'libmp3lame',
-			'-q:a', str(args.mp3_quality)
+			'-q:a', args.mp3_quality
 		]
 
 	if args.cover_scale is None:
@@ -133,6 +151,31 @@ def get_command(file):
 	return command
 
 
+# action selection menu
+if not args.yes:
+	while True:
+		print("""select action:
+		[l]ist files to be converted
+		[s]how ffmpeg commands
+		[y]/[c]onvert
+		[n]/[q]uit""")
+		action = input('[lsycnq]:')
+		if action in ['y', 'c']:
+			break
+		elif action in ['n', 'q']:
+			exit(0)
+		elif action == 'l':
+			for file in files:
+				print(file.input)
+				if file.outputmtime is None:
+					print('does not exist in the output directory')
+				else:
+					print(f'in: {file.inputmtime} out: {file.outputmtime}')
+		elif action == 's':
+			for file in files:
+				print(' '.join(get_command(file)))
+
+
 def convert(file):
 	""" prepare and start conversion with ffmpeg process, returns handle to ffmpeg process """
 	command = get_command(file)
@@ -141,6 +184,7 @@ def convert(file):
 		os.remove(file.output)
 	if not path.isdir(path.dirname(file.output)):
 		os.makedirs(path.dirname(file.output))
+
 	return subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -156,48 +200,46 @@ class Error:
 	retcode: int
 
 
-cpu_count = multiprocessing.cpu_count()
 workers = []
 errors = []
 
-total = len(files)
-done = 0
+try:
+	cpu_count = multiprocessing.cpu_count()
+	total = len(files)
+	done = 0
+	time_start = time.time()
 
-if args.dry_run:
-	for file in files:
-		print(' '.join(get_command(file)))
-else:
-	try:
-		while files or workers:
-			# check running workers
-			for i in range(len(workers) - 1, -1, -1):
-				worker = workers[i]
-				if worker.process.poll() is not None:
-					if worker.process.returncode == 0:
-						os.utime(worker.file.output,
-						         (worker.file.inputmtime, worker.file.inputmtime))
-						done += 1
-					else:
-						error = Error(worker.file, worker.process.returncode)
-						errors.append(error)
-						os.remove(worker.file.output)
-					del workers[i]
+	while files or workers:
+		# check running workers
+		for i in range(len(workers) - 1, -1, -1):
+			worker = workers[i]
+			if worker.process.poll() is not None:
+				if worker.process.returncode == 0:
+					os.utime(worker.file.output,
+					         (worker.file.inputmtime, worker.file.inputmtime))
+					done += 1
+				else:
+					error = Error(worker.file, worker.process.returncode)
+					errors.append(error)
+					os.remove(worker.file.output)
+				del workers[i]
 
-			# restock workers
-			while files and len(workers) < cpu_count:
-				file = files.pop(0)
-				worker = Worker(file, convert(file))
-				workers.append(worker)
+		# restock workers
+		while files and len(workers) < cpu_count:
+			file = files.pop(0)
+			worker = Worker(file, convert(file))
+			workers.append(worker)
 
-			print(f'{len(workers)} workers, {done}/{total} files converted, {len(errors)} errors', end='\r')
-			time.sleep(0.01)
+		elapsed = int(time.time() - time_start)
+		print(f'{len(workers)} workers, {done}/{total} files converted in {str(datetime.timedelta(seconds=elapsed))}, {len(errors)} errors', end='\r')
+		time.sleep(0.01)
 
-	except KeyboardInterrupt:
-		print()
-		print('KeyboardInterrupt, stopping workers and cleaning up partial files')
-		for worker in workers:
-			worker.process.kill()
-			os.remove(worker.file.output)
+except KeyboardInterrupt:
+	print()
+	print('KeyboardInterrupt. stopping workers and cleaning up partial files')
+	for worker in workers:
+		worker.process.kill()
+		os.remove(worker.file.output)
 
 print('done')
 if errors:
