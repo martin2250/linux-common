@@ -38,3 +38,9 @@ dconf watch /
 ```
 ./dconf.py [load/save] [set]
 ```
+
+## disable tracker
+```
+gsettings set org.freedesktop.Tracker.Miner.Files enable-monitors false
+gsettings set org.freedesktop.Tracker.Miner.Files crawling-interval -2
+```
