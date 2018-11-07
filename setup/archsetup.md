@@ -5,6 +5,10 @@ ln -s ~/linux-common/configuration/bashrc ~/.bashrc
 ln -s ~/linux-common/bin ~/.bin
 ```
 
+## (on PC) disable usb autosuspend to fix problems with USB hub
+add `usbcore.autosuspend=-1` to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`
+then run `sudo grub-mkconfig -o /boot/grub/grub.cfg`
+
 ## Use all cores for yaourt compiling
 `MAKEFLAGS="-j6"` in `/etc/makepkg.conf`
 
