@@ -1,5 +1,5 @@
 ```bash
-sudo pacman -S gitkraken inkscape atom noto-fonts-emoji gimp vlc puddletag chromium-widevine libqalculate qalculate-gtk fzf bat htop ncdu tldr
+sudo pacman -S gitkraken inkscape atom noto-fonts-emoji gimp vlc puddletag chromium-widevine libqalculate qalculate-gtk fzf bat htop ncdu tldr android-tools
 yaourt -S freefilesync pix
 ```
 
