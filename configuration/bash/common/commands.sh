@@ -9,6 +9,9 @@ function run { $@ > /dev/null 2>&1 & disown > /dev/null 2>&1; }
 # kill all jobs running in background
 function killjobs { kill $(jobs -p); }
 
+# open new terminal window with optional directory
+function term { gnome-terminal --quiet --working-directory=${1:-$(pwd)}; }
+
 # extract compressed file
 function extract () {
 	if [ -f $1 ] ; then
