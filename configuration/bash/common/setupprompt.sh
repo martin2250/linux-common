@@ -21,7 +21,7 @@ function PS_Exit
 
 function timer_start {
 	timer=${timer:-$SECONDS}
-	echo -e '\033]2;'$BASH_COMMAND'\007'
+	echo -en '\033]2;'$BASH_COMMAND'\007'
 }
 
 trap 'timer_start' DEBUG
@@ -30,7 +30,7 @@ function PS_Set_Prompt
 {
 	PS1="$(PS_Exit) ${GREEN}$(($SECONDS - $timer))s ${YELLOW}\$(date +%H:%M) ${GREEN}\u@\h ${BLUE}\W\n${GREEN}\$${RESET}"
 	unset timer
-	echo -e '\033]2;'$PWD'\007'
+	echo -en '\033]2;'$PWD'\007'
 }
 
 PROMPT_COMMAND=PS_Set_Prompt
