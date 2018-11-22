@@ -1,6 +1,6 @@
 [custom-keybindings/custom6]
 binding=['Calculator']
-command='gnome-terminal -- qalc'
+command='gnome-terminal -t QALC -- qalc'
 name='Qalc'
 
 [custom-keybindings/custom2]
