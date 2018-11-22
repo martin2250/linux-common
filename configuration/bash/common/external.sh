@@ -42,3 +42,7 @@ if [ -d /usr/share/fzf ]; then
 		dir=$(find ${1:-.} -type d 2> /dev/null | fzf +m) && cd "$dir"
 	}
 fi
+
+if CMD_AVAILABLE activate-global-python-argcomplete; then
+	eval "$(activate-global-python-argcomplete --dest=-)"
+fi

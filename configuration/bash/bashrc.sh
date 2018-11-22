@@ -3,11 +3,6 @@
 # test if command available
 alias CMD_AVAILABLE='command -v > /dev/null 2>&1'
 
-# source all files in ~/.bash
-for file in $(find -L ~/.bash -name '*.sh' -type f); do
-	source $file;
-done
-
 # enable bash completion in interactive shells
 if ! shopt -oq posix; then
 	if [ -f /usr/share/bash-completion/bash_completion ]; then
@@ -16,3 +11,8 @@ if ! shopt -oq posix; then
 		source /etc/bash_completion
 	fi
 fi
+
+# source all files in ~/.bash
+for file in $(find -L ~/.bash -name '*.sh' -type f); do
+	source $file;
+done
