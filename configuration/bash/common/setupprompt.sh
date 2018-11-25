@@ -30,7 +30,7 @@ function PS_Set_Prompt
 {
 	PS1="$(PS_Exit) ${GREEN}$(($SECONDS - $timer))s ${YELLOW}\$(date +%H:%M) ${GREEN}\u@\h ${BLUE}\W\n${GREEN}\$${RESET}"
 	unset timer
-	echo -en '\033]2;'$(basename $PWD)'\007'
+	echo -en '\033]2;'$(basename "$PWD")'\007'
 }
 
 PROMPT_COMMAND=PS_Set_Prompt
