@@ -12,6 +12,9 @@ function killjobs { kill $(jobs -p); }
 # open new terminal window with optional directory
 function term { gnome-terminal --quiet --working-directory=${1:-$(pwd)}; }
 
+# make new directory (can contain new subdirectories) and cd into it
+function mkcd { mkdir $1 && cd $1; }
+
 # extract compressed file
 function extract () {
 	if [ -f $1 ] ; then
