@@ -40,7 +40,7 @@ parser.add_argument('--cover-scale', metavar='SIZE',
                     type=int, help='rescale covers to SIZExSIZE, a size of 0 discards the cover, omitting this argument copies the cover')
 parser.add_argument('--limit', metavar='COUNT', type=int,
                     help='only convert the first COUNT files')
-parser.add_argument('--threads', metavar='THREADS', type=int,
+parser.add_argument('-j', '--threads', metavar='THREADS', type=int,
                     help='number of ffmpeg subprocesses to use, use all cores by default')
 parser.add_argument('-y', '--yes', action='store_true',
                     help='skip action selection menu')
@@ -278,7 +278,7 @@ except KeyboardInterrupt:
 		worker.process.kill()
 		os.remove(worker.file.output)
 
-print('done')
+print('\ndone')
 if errors:
 	print('errors:')
 	print('RET\tFILE')
