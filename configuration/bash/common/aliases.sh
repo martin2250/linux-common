@@ -36,3 +36,7 @@ fi
 if CMD_AVAILABLE ncdu; then
 	alias ncdu='ncdu --color dark -rr -x --exclude .git --exclude node_modules'
 fi
+
+if CMD_AVAILABLE perf; then
+	alias ccycles='perf stat -B -e cycles:u,instructions:u'
+fi
