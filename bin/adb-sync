@@ -1,0 +1,263 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
+import argparse
+import code
+import datetime
+import os.path
+from dataclasses import dataclass
+
+import adb.adb_commands
+import adb.sign_m2crypto
+
+parser = argparse.ArgumentParser(
+	description='sync files to an android phone, keeping the timestamp like rsync -t')
+
+parser.add_argument('source', type=os.path.abspath,
+                    help='source path')
+parser.add_argument('destination',
+                    help='destination path')
+parser.add_argument('-y', '--yes', action='store_true',
+                    help='sync without confirmation')
+parser.add_argument('--delete', action='store_true',
+                    help='delete files that only exist in the destination (only works with yes)')
+parser.add_argument('--modify-window', metavar='interval', type=float, default=2,
+                    help='do not sync files whose times are within <interval> (seconds)')
+
+try:
+	import argcomplete
+	argcomplete.autocomplete(parser)
+except:
+	pass
+
+args = parser.parse_args()
+
+################################################################################
+
+print('scanning local directory')
+
+
+@dataclass
+class FileInfo:
+	path: str
+	name: str
+	mtime: float
+	size: int
+
+
+files_local = []
+
+for directory_name, _, file_names in os.walk(args.source):
+	for file_name in file_names:
+		dir_rel = os.path.relpath(directory_name, args.source)
+		path_abs = os.path.join(directory_name, file_name)
+		mtime = os.path.getmtime(path_abs)
+		size = os.path.getsize(path_abs)
+
+		files_local.append(FileInfo(dir_rel, file_name, mtime, size))
+
+filenames_local = [os.path.join(file.path, file.name)
+                   for file in files_local]
+
+print(f'  > found {len(files_local)} files')
+
+################################################################################
+
+print('connecting to device')
+
+signer = adb.sign_m2crypto.M2CryptoSigner(
+	os.path.expanduser('~/.android/adbkey'))
+
+cmd = adb.adb_commands.AdbCommands()
+phone = cmd.ConnectDevice(rsa_keys=[signer])
+
+################################################################################
+
+print('scanning remote directory')
+
+files_remote = []
+folders_empty_remote = []
+
+
+def mode_isdir(mode):
+	return bool(mode & (1 << 14))
+
+
+def scan_path_remote(path):
+	global files
+	files = phone.List(path)
+	if len(files) == 2:  # only . and ..
+		folders_empty_remote.append(path)
+		return
+	for file in files:
+		file_name = file.filename.decode()
+		file_name_abs = os.path.join(path, file_name)
+		path_rel = os.path.relpath(path, args.destination)
+		if file_name in ['.', '..']:
+			continue
+		if mode_isdir(file.mode):
+				scan_path_remote(file_name_abs)
+		else:
+			files_remote.append(FileInfo(path_rel, file_name, file.mtime, file.size))
+
+
+scan_path_remote(args.destination)
+filenames_remote = [os.path.join(file.path, file.name)
+                    for file in files_remote]
+
+print(f'  > found {len(files_remote)} files')
+
+################################################################################
+# compare file lists
+
+indexes_files_to_sync = []  # missing and old files (indexes for files_local)
+# files that only exist in the destination (indexes for files_remote)
+indexes_files_rogue = []
+
+for (index_local, filename_local) in enumerate(filenames_local):
+	if filename_local not in filenames_remote:
+		indexes_files_to_sync.append(index_local)
+	else:
+		file_local = files_local[index_local]
+		file_remote = files_remote[filenames_remote.index(filename_local)]
+		if abs(file_local.mtime - file_remote.mtime) > args.modify_window:
+			indexes_files_to_sync.append(index_local)
+
+for (index_remote, filename_remote) in enumerate(filenames_remote):
+	if filename_remote not in filenames_local:
+		indexes_files_rogue.append(index_remote)
+
+################################################################################
+# print infos
+print()
+
+
+def human_size_from_bytes(size):
+	step_unit = 1024
+
+	for unit in ['bytes', 'KiB', 'MiB', 'GiB', 'TiB']:
+		if size < step_unit:
+			return f'{size:3.1f} {unit}'
+		size /= step_unit
+
+
+if indexes_files_to_sync:
+	size_local = 0
+	for index_local in indexes_files_to_sync:
+		size_local += files_local[index_local].size
+	print(f'{len(indexes_files_to_sync)} files need to be synced ({human_size_from_bytes(size_local)})')
+
+
+if indexes_files_rogue:
+	size_remote = 0
+	for index_remote in indexes_files_rogue:
+		size_remote += files_remote[index_remote].size
+	print(f'{len(indexes_files_rogue)} files only exist in the destination ({human_size_from_bytes(size_remote)})')
+
+if folders_empty_remote:
+	print(f'{len(folders_empty_remote)} empty folders')
+
+################################################################################
+
+
+def sync_files():
+	global indexes_files_to_sync
+	total = len(indexes_files_to_sync)
+	for (count, index_local) in enumerate(indexes_files_to_sync):
+		filename_local = filenames_local[index_local]
+		path_local = os.path.join(args.source, filename_local)
+		path_remote = os.path.join(args.destination, filename_local)
+		print(f'({count + 1}/{total}) {filename_local}')
+		phone.Push(path_local, path_remote, files_local[index_local].mtime)
+	indexes_files_to_sync = []
+
+
+def delete_rogue_checkdir(path_remote):
+	while True:
+		if not mode_isdir(phone.Stat(path_remote)[0]):
+			print(f'deleting file   {path_remote}')
+			phone.Shell(f'rm "{path_remote}"')
+		else:
+			print(f'deleting folder {path_remote}')
+			phone.Shell(f'rmdir "{path_remote}"')
+		path_remote = os.path.dirname(path_remote)
+		if len(phone.List(path_remote)) > 2:
+			break
+
+
+def delete_rogues():
+	global indexes_files_rogue
+	global folders_empty_remote
+	for index_remote in indexes_files_rogue:
+		filename_remote = filenames_remote[index_remote]
+		path_remote = os.path.join(args.destination, filename_remote)
+		delete_rogue_checkdir(path_remote)
+	indexes_files_rogue = []
+	for folder_empty_remote in folders_empty_remote:
+		delete_rogue_checkdir(folder_empty_remote)
+	folders_empty_remote = []
+
+
+def list_files():
+	def unix_to_str(timestamp):
+		return datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+
+	for index_local in indexes_files_to_sync:
+		filename_local = filenames_local[index_local]
+		print(filenames_local[index_local])
+		if filename_local in filenames_remote:
+			index_remote = filenames_remote.index(filename_local)
+			print(f' > local : {unix_to_str(int(files_local[index_local].mtime))}')
+			print(f' > remote: {unix_to_str(int(files_remote[index_remote].mtime))}')
+
+
+def list_rogues():
+	any_rogues = False
+	if indexes_files_rogue:
+		any_rogues = True
+		print('rogue files:')
+		for index_remote in indexes_files_rogue:
+			print(filenames_remote[index_remote])
+	if folders_empty_remote:
+		any_rogues = True
+		print('empty folders:')
+		for folder_empty_remote in folders_empty_remote:
+			print(folder_empty_remote)
+	if not any_rogues:
+		print('ro rogue files or empty folders')
+
+
+################################################################################
+
+if args.yes:
+	sync_files()
+	if args.delete:
+		delete_rogues()
+	exit()
+
+################################################################################
+
+while True:
+	if not indexes_files_to_sync and not indexes_files_rogue and not folders_empty_remote:
+		print('nothing more to do')
+		exit()
+
+	print("""select action:
+	[l]/[list] files to be synced
+	[l]ist [r]ogue files
+	[d]elete [r]ogue files and empty folders
+	[y]/[s]ync
+	[n]/[q]uit""")
+	action = input('action: ').strip()
+
+	if action in ['y', 's', 'sync']:
+		sync_files()
+	elif action in ['n', 'q', 'quit', 'exit']:
+		exit(0)
+	elif action in ['l', 'list']:
+		list_files()
+	elif action in ['lr', 'list rogue']:
+		list_rogues()
+	elif action in ['dr', 'delete rogue']:
+		delete_rogues()
+	else:
+		print('unsupported action')
