@@ -1,16 +1,7 @@
-#!/usr/bin/python
-from __future__ import print_function
-
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
 import argparse
-import concurrent.futures
-import datetime
-import multiprocessing
-import os
-import os.path as path
-import subprocess
-import sys
-import time
-from dataclasses import dataclass
+import os.path
 
 # TODO:
 # check for rogue (empty) folders
@@ -45,7 +36,23 @@ parser.add_argument('-j', '--threads', metavar='THREADS', type=int,
 parser.add_argument('-y', '--yes', action='store_true',
                     help='skip action selection menu')
 
+try:
+	import argcomplete
+	argcomplete.autocomplete(parser)
+except:
+	pass
+
 args = parser.parse_args()
+
+if True:
+	import concurrent.futures
+	import datetime
+	import multiprocessing
+	import os
+	import subprocess
+	import sys
+	import time
+	from dataclasses import dataclass
 
 inputpath = args.inputpath
 outputpath = args.outputpath
@@ -217,10 +224,10 @@ def convert(file):
 	""" prepare and start conversion with ffmpeg process, returns handle to ffmpeg process """
 	command = get_command(file)
 
-	if path.exists(file.output):
+	if os.path.exists(file.output):
 		os.remove(file.output)
-	if not path.isdir(path.dirname(file.output)):
-		os.makedirs(path.dirname(file.output))
+	if not os.path.isdir(os.path.dirname(file.output)):
+		os.makedirs(os.path.dirname(file.output))
 
 	return subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
