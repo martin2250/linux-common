@@ -3,7 +3,9 @@
 import argparse
 import code
 import datetime
+import fnmatch
 import os.path
+import time
 from dataclasses import dataclass
 
 import adb.adb_commands
@@ -12,14 +14,22 @@ import adb.sign_m2crypto
 parser = argparse.ArgumentParser(
 	description='sync files to an android phone, keeping the timestamp like rsync -t')
 
-parser.add_argument('source', type=os.path.abspath,
-                    help='source path')
-parser.add_argument('destination',
-                    help='destination path')
+parser.add_argument('local', type=os.path.abspath,
+                    help='local path, used as source with direction to_remote')
+parser.add_argument('remote',
+                    help='remote path, used as source with direction from_remote')
+parser.add_argument('direction', choices=[
+                    'to_remote', 'from_remote'], help='copy file to or from the android device')
+
 parser.add_argument('-y', '--yes', action='store_true',
                     help='sync without confirmation')
 parser.add_argument('--delete', action='store_true',
                     help='delete files that only exist in the destination (only works with yes)')
+
+parser.add_argument('--whitelist', action='append',
+                    help='only sync files that match this glob pattern, can be specified multiple times')
+parser.add_argument('--blacklist', action='append',
+                    help='don\'t sync files that match this glob pattern, can be specified multiple times')
 parser.add_argument('--modify-window', metavar='interval', type=float, default=2,
                     help='do not sync files whose times are within <interval> (seconds)')
 
@@ -30,6 +40,11 @@ except:
 	pass
 
 args = parser.parse_args()
+
+if args.direction == 'to_remote':
+	print(f'syncing local:{args.local} to adb:{args.remote}')
+else:
+	print(f'syncing adb:{args.remote} to local:{args.local}')
 
 ################################################################################
 
@@ -45,10 +60,13 @@ class FileInfo:
 
 
 files_local = []
+folders_empty_local = []
 
-for directory_name, _, file_names in os.walk(args.source):
+for directory_name, _, file_names in os.walk(args.local):
+	if not file_names:
+		folders_empty_local.append(directory_name)
 	for file_name in file_names:
-		dir_rel = os.path.relpath(directory_name, args.source)
+		dir_rel = os.path.relpath(directory_name, args.local)
 		path_abs = os.path.join(directory_name, file_name)
 		mtime = os.path.getmtime(path_abs)
 		size = os.path.getsize(path_abs)
@@ -91,7 +109,7 @@ def scan_path_remote(path):
 	for file in files:
 		file_name = file.filename.decode()
 		file_name_abs = os.path.join(path, file_name)
-		path_rel = os.path.relpath(path, args.destination)
+		path_rel = os.path.relpath(path, args.remote)
 		if file_name in ['.', '..']:
 			continue
 		if mode_isdir(file.mode):
@@ -100,31 +118,60 @@ def scan_path_remote(path):
 			files_remote.append(FileInfo(path_rel, file_name, file.mtime, file.size))
 
 
-scan_path_remote(args.destination)
+scan_path_remote(args.remote)
 filenames_remote = [os.path.join(file.path, file.name)
                     for file in files_remote]
 
 print(f'  > found {len(files_remote)} files')
 
 ################################################################################
+# assign source and destination from local and remote
+filenames_source = filenames_local if args.direction == 'to_remote' else filenames_remote
+files_source = files_local if args.direction == 'to_remote' else files_remote
+
+filenames_destination = filenames_remote if args.direction == 'to_remote' else filenames_local
+files_destination = files_remote if args.direction == 'to_remote' else files_local
+folders_empty_destination = folders_empty_remote if args.direction == 'to_remote' else folders_empty_local
+
+################################################################################
 # compare file lists
 
-indexes_files_to_sync = []  # missing and old files (indexes for files_local)
-# files that only exist in the destination (indexes for files_remote)
+indexes_files_to_sync = []  # missing and old files (indexes for files_source)
+# files that only exist in the destination (indexes for files_destination)
 indexes_files_rogue = []
 
-for (index_local, filename_local) in enumerate(filenames_local):
-	if filename_local not in filenames_remote:
-		indexes_files_to_sync.append(index_local)
-	else:
-		file_local = files_local[index_local]
-		file_remote = files_remote[filenames_remote.index(filename_local)]
-		if abs(file_local.mtime - file_remote.mtime) > args.modify_window:
-			indexes_files_to_sync.append(index_local)
 
-for (index_remote, filename_remote) in enumerate(filenames_remote):
-	if filename_remote not in filenames_local:
-		indexes_files_rogue.append(index_remote)
+def include_file(filename):
+	if args.whitelist:
+		matches = False
+		for pattern in args.whitelist:
+			if fnmatch.fnmatch(filename_source, pattern):
+				matches = True
+				break
+		if not matches:
+			return False
+	if args.blacklist:
+		for pattern in args.blacklist:
+			if fnmatch.fnmatch(filename_source, pattern):
+				return False
+	return True
+
+
+for (index_source, filename_source) in enumerate(filenames_source):
+	if not include_file(filename_source):
+		continue
+	if filename_source not in filenames_destination:
+		indexes_files_to_sync.append(index_source)
+	else:
+		file_source = files_source[index_source]
+		file_destination = files_destination[filenames_destination.index(
+			filename_source)]
+		if (abs(file_source.mtime - file_destination.mtime) > args.modify_window) or (file_source.size != file_destination.size):
+			indexes_files_to_sync.append(index_source)
+
+for (index_destination, filename_destination) in enumerate(filenames_destination):
+	if filename_destination not in filenames_source:
+		indexes_files_rogue.append(index_destination)
 
 ################################################################################
 # print infos
@@ -141,37 +188,72 @@ def human_size_from_bytes(size):
 
 
 if indexes_files_to_sync:
-	size_local = 0
-	for index_local in indexes_files_to_sync:
-		size_local += files_local[index_local].size
-	print(f'{len(indexes_files_to_sync)} files need to be synced ({human_size_from_bytes(size_local)})')
+	size_source = 0
+	for index_source in indexes_files_to_sync:
+		size_source += files_source[index_source].size
+	print(f'{len(indexes_files_to_sync)} files need to be synced ({human_size_from_bytes(size_source)})')
 
 
 if indexes_files_rogue:
-	size_remote = 0
-	for index_remote in indexes_files_rogue:
-		size_remote += files_remote[index_remote].size
-	print(f'{len(indexes_files_rogue)} files only exist in the destination ({human_size_from_bytes(size_remote)})')
+	size_destination = 0
+	for index_destination in indexes_files_rogue:
+		size_destination += files_destination[index_destination].size
+	print(f'{len(indexes_files_rogue)} files only exist in the destination ({human_size_from_bytes(size_destination)})')
 
-if folders_empty_remote:
-	print(f'{len(folders_empty_remote)} empty folders')
+if folders_empty_destination:
+	print(f'{len(folders_empty_destination)} empty folders in destination')
+
+print()
 
 ################################################################################
 
 
 def sync_files():
 	global indexes_files_to_sync
-	total = len(indexes_files_to_sync)
-	for (count, index_local) in enumerate(indexes_files_to_sync):
-		filename_local = filenames_local[index_local]
-		path_local = os.path.join(args.source, filename_local)
-		path_remote = os.path.join(args.destination, filename_local)
-		print(f'({count + 1}/{total}) {filename_local}')
-		phone.Push(path_local, path_remote, files_local[index_local].mtime)
+
+	count_total = len(indexes_files_to_sync)
+	size_synced = 0
+	time_start = time.time()
+	for (count, index_source) in enumerate(indexes_files_to_sync):
+		filename_source = filenames_source[index_source]
+		file_source = files_source[index_source]
+		path_local = os.path.join(args.local, filename_source)
+		path_remote = os.path.join(args.remote, filename_source)
+		progress_header = f'({count + 1}/{count_total}) {filename_source}'
+		print(progress_header, end='')
+
+		def progress_callback(filename, size_current, size_total):
+			# extra spaces to clear line, in case the current bytes passed a new decimal prefix
+			print(f'\r{progress_header} \t ({human_size_from_bytes(size_current)}/{human_size_from_bytes(size_total)})   ', end='')
+
+		if args.direction == 'to_remote':
+			try:
+				phone.Push(path_local, path_remote,
+				           files_source[index_source].mtime, progress_callback=progress_callback)
+			except:
+				print()
+				delete_rogue_checkdir_remote(path_remote)
+				raise
+		else:
+			os.makedirs(os.path.dirname(path_local), exist_ok=True)
+			try:
+				phone.Pull(path_remote, path_local, progress_callback=progress_callback)
+				os.utime(path_local, (file_source.mtime, file_source.mtime))
+			except:
+				print()
+				delete_rogue_checkdir_local(path_local)
+				raise
+
+		size_synced += file_source.size
+		print()
+
 	indexes_files_to_sync = []
 
+	duration = time.time() - time_start
+	print(f'total {human_size_from_bytes(size_synced)} synced in {duration:0.0f}s ({human_size_from_bytes(size_synced/duration)}/s)')
 
-def delete_rogue_checkdir(path_remote):
+
+def delete_rogue_checkdir_remote(path_remote):
 	while True:
 		if not mode_isdir(phone.Stat(path_remote)[0]):
 			print(f'deleting file   {path_remote}')
@@ -184,30 +266,58 @@ def delete_rogue_checkdir(path_remote):
 			break
 
 
+def delete_rogue_checkdir_local(path_local):
+	while True:
+		if os.path.isfile(path_local):
+			print(f'deleting file   {path_local}')
+			os.remove(path_local)
+		else:
+			print(f'deleting folder {path_local}')
+			os.rmdir(path_local)
+		path_local = os.path.dirname(path_local)
+		if os.listdir(path_local):
+			break
+
+
 def delete_rogues():
 	global indexes_files_rogue
-	global folders_empty_remote
-	for index_remote in indexes_files_rogue:
-		filename_remote = filenames_remote[index_remote]
-		path_remote = os.path.join(args.destination, filename_remote)
-		delete_rogue_checkdir(path_remote)
+	global folders_empty_destination
+	for index_destination in indexes_files_rogue:
+		filename_destination = filenames_destination[index_destination]
+		if args.direction == 'to_remote':
+			path_remote = os.path.join(args.remote, filename_destination)
+			delete_rogue_checkdir_remote(path_remote)
+		else:
+			path_local = os.path.join(args.local, filename_destination)
+			delete_rogue_checkdir_local(path_local)
 	indexes_files_rogue = []
-	for folder_empty_remote in folders_empty_remote:
-		delete_rogue_checkdir(folder_empty_remote)
+
+	for folder_empty_destination in folders_empty_destination:
+		if args.direction == 'to_remote':
+			delete_rogue_checkdir_remote(folder_empty_destination)
+		else:
+			delete_rogue_checkdir_local(folder_empty_destination)
 	folders_empty_remote = []
 
 
 def list_files():
 	def unix_to_str(timestamp):
-		return datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+		return datetime.datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
 
-	for index_local in indexes_files_to_sync:
-		filename_local = filenames_local[index_local]
-		print(filenames_local[index_local])
-		if filename_local in filenames_remote:
-			index_remote = filenames_remote.index(filename_local)
-			print(f' > local : {unix_to_str(int(files_local[index_local].mtime))}')
-			print(f' > remote: {unix_to_str(int(files_remote[index_remote].mtime))}')
+	for index_source in indexes_files_to_sync:
+		filename_source = filenames_source[index_source]
+		file_source = files_source[index_source]
+
+		if filename_source in filenames_destination:
+			print(filename_source)
+			index_destination = filenames_destination.index(filename_source)
+			file_destination = files_destination[index_destination]
+			print(
+				f' > source     : {unix_to_str(file_source.mtime)}\t{human_size_from_bytes(file_source.size)}')
+			print(
+				f' > destination: {unix_to_str(file_destination.mtime)}\t{human_size_from_bytes(file_destination.size)}')
+		else:
+			print(f'{filename_source}\t({human_size_from_bytes(file_source.size)})')
 
 
 def list_rogues():
@@ -215,13 +325,13 @@ def list_rogues():
 	if indexes_files_rogue:
 		any_rogues = True
 		print('rogue files:')
-		for index_remote in indexes_files_rogue:
-			print(filenames_remote[index_remote])
-	if folders_empty_remote:
+		for index_destination in indexes_files_rogue:
+			print(filenames_destination[index_destination])
+	if folders_empty_destination:
 		any_rogues = True
 		print('empty folders:')
-		for folder_empty_remote in folders_empty_remote:
-			print(folder_empty_remote)
+		for folder_empty_destination in folders_empty_destination:
+			print(folder_empty_destination)
 	if not any_rogues:
 		print('ro rogue files or empty folders')
 
@@ -232,12 +342,13 @@ if args.yes:
 	sync_files()
 	if args.delete:
 		delete_rogues()
+	print('done')
 	exit()
 
 ################################################################################
 
 while True:
-	if not indexes_files_to_sync and not indexes_files_rogue and not folders_empty_remote:
+	if not indexes_files_to_sync and not indexes_files_rogue and not folders_empty_destination:
 		print('nothing more to do')
 		exit()
 
