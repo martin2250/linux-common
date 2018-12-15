@@ -1,6 +1,6 @@
 ```bash
-sudo pacman -S gitkraken inkscape atom noto-fonts-emoji gimp vlc chromium-widevine libqalculate qalculate-gtk fzf bat htop tldr android-tools blender thunderbird gparted pdfshuffler
-yaourt -S freefilesync pix
+sudo pacman -S gitkraken inkscape atom noto-fonts-emoji gimp vlc chromium-widevine libqalculate qalculate-gtk fzf bat htop tldr android-tools blender thunderbird gparted pdfshuffler sonata
+yaourt -S station pix
 ```
 
 ## Latex + Python
