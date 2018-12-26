@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export PATH=$PATH:~/bin
+export PATH=$PATH:~/bin:~/.local/bin/
 
 if CMD_AVAILABLE go; then
 	export GOPATH=~/go
