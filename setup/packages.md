@@ -1,14 +1,28 @@
+# Packages
 ```bash
-sudo pacman -S gitkraken inkscape atom noto-fonts-emoji gimp vlc chromium-widevine libqalculate qalculate-gtk fzf bat htop tldr android-tools blender thunderbird gparted pdfshuffler sonata screen
-yaourt -S station pix
+## first pacman -S required, second optional
+# tools
+sudo pacman -S libqalculate fzf bat htop android-tools screen traceroute nmon nmap jq vim perf p7zip imagemagick
+sudo pacman -S docker tldr platformio-git windscribe-cli
+
+# gui
+sudo pacman -S gitkraken inkscape atom gimp vlc qalculate-gtk blender thunderbird gparted pdfshuffler sonata audacity
+sudo pacman -S kicad kicad-library-3d saleae-logic
+
+# libs
+sudo pacman -S noto-fonts-emoji chromium-widevine
+
+
+# AUR
+yay -S station pix circuit-simulator
 ```
 
 ## Latex + Python
 ```bash
-sudo pacman -S ghostscript texlive-core texlive-latexextra texlive-fontsextra texlive-science tk inkscape pstoedit
-sudo pacman -S python-numpy python-scipy python-matplotlib python-argcomplete autopep8
+sudo pacman -S ghostscript texlive-core texlive-latexextra texlive-fontsextra texlive-science tk pstoedit
+sudo pacman -S python-numpy python-scipy python-matplotlib python-argcomplete autopep8 python-pyserial
 
 
-sudo pip install matplotlib numpy scipy kafe iminuit
+pip install kafe --user
 updmap		#important! updates font cache to fix an error with pyplot
 ```
