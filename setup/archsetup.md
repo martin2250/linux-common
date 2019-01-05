@@ -1,3 +1,9 @@
+## automatically update linux common
+put into startup applications:
+```bash
+bash -c "cd ~/linux-common && git pull && notify-send 'linux-common updated'"
+```
+
 ## (on PC) disable usb autosuspend to fix problems with USB hub
 add `usbcore.autosuspend=-1` to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`
 then run `sudo grub-mkconfig -o /boot/grub/grub.cfg`
