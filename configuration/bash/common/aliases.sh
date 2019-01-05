@@ -15,6 +15,9 @@ alias open='run xdg-open'
 alias pdfcombine='gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -dPDFSETTINGS=/prepress -sOutputFile='
 alias udevreload='sudo udevadm control --reload-rules; sudo udevadm trigger;'
 
+# cd to directory and list files (has to be here so ls alias is already available)
+function cdl { cd "$1"; ls; }
+
 # git aliases
 alias gca='git commit -a'
 alias gp='git pull --rebase'
