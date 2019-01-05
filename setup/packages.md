@@ -6,7 +6,7 @@ sudo pacman -S fzf bat htop screen traceroute nmon nmap jq vim perf p7zip git
 sudo pacman -S docker tldr platformio-git windscribe-cli android-tools imagemagick libqalculate
 
 # gui
-sudo pacman -S gitkraken inkscape atom gimp vlc qalculate-gtk blender thunderbird gparted pdfshuffler sonata audacity
+sudo pacman -S gitkraken inkscape atom gimp vlc qalculate-gtk blender thunderbird gparted pdfshuffler sonata audacity clementine
 sudo pacman -S kicad kicad-library-3d saleae-logic
 
 # libs
