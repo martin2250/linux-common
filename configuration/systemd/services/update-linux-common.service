@@ -1,0 +1,6 @@
+[Unit]
+Description=Update linux-common folder
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash -c "cd ~/linux-common; git pull && notify-send \"linux-common updated\" || notify-send \"error updating linux-common\""
