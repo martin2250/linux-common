@@ -2,6 +2,7 @@
 
 BASHPATH="$( cd "$(dirname "$0")" ; pwd -P )"
 
+mkdir -p $HOME/.config/systemd/user
 pushd $HOME/.config/systemd/user/
 rm -f update-linux-common.*
 popd
