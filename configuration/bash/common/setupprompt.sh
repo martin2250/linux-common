@@ -8,6 +8,8 @@ MAGENTA="\[\033[0;35m\]"
 CYAN="\[\033[0;36m\]"
 RESET="\[\033[0m\]"
 
+source /etc/profile.d/vte.sh
+
 function PS_Exit
 {
 	ES=$?
@@ -29,6 +31,7 @@ trap 'timer_start' DEBUG
 function PS_Set_Prompt
 {
 	PS1="$(PS_Exit) ${GREEN}$(($SECONDS - $timer))s ${YELLOW}\$(date +%H:%M) ${GREEN}\u@\h ${BLUE}\W\n${GREEN}\$${RESET}"
+	printf "$(__vte_osc7)"
 	unset timer
 	echo -en '\033]2;'$(basename "$PWD")'\007'
 }
