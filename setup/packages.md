@@ -10,7 +10,7 @@ sudo pacman -S gitkraken inkscape atom gimp vlc qalculate-gtk blender thunderbir
 sudo pacman -S kicad kicad-library-3d saleae-logic
 
 # libs
-sudo pacman -S noto-fonts-emoji chromium-widevine
+sudo pacman -S noto-fonts-emoji chromium-widevine ttf-humor-sans
 
 
 # AUR
