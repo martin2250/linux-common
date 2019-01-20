@@ -1,5 +1,5 @@
 [Unit]
-Description=Update linux-common folder
+Description=check linux-common git repo for updates
 
 [Timer]
 OnBootSec=1min
