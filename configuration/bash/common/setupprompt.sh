@@ -8,6 +8,8 @@ MAGENTA="\[\033[0;35m\]"
 CYAN="\[\033[0;36m\]"
 RESET="\[\033[0m\]"
 
+# make sure this loads correctly on alarmpi
+export VTE_VERSION=5000
 source /etc/profile.d/vte.sh
 
 function PS_Exit
