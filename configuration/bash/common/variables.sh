@@ -4,7 +4,8 @@ export PATH=$PATH:~/bin:~/.local/bin/
 
 if CMD_AVAILABLE go; then
 	export GOPATH=~/go
-	export PATH=$PATH:$GOPATH/bin
+	export GOBIN=$GOPATH/bin
+	export PATH=$PATH:$GOBIN
 fi
 
 export EDITOR=/usr/bin/nano
