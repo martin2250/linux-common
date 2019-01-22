@@ -3,22 +3,13 @@
 # test if command available
 alias CMD_AVAILABLE='command -v > /dev/null 2>&1'
 
-# formatting
-BLACK=$(tput setaf 0)
-RED=$(tput setaf 1)
-GREEN=$(tput setaf 2)
-YELLOW=$(tput setaf 3)
-LIME_YELLOW=$(tput setaf 190)
-POWDER_BLUE=$(tput setaf 153)
-BLUE=$(tput setaf 4)
-MAGENTA=$(tput setaf 5)
-CYAN=$(tput setaf 6)
-WHITE=$(tput setaf 7)
-BRIGHT=$(tput bold)
-RESET=$(tput sgr0)
-BLINK=$(tput blink)
-REVERSE=$(tput smso)
-UNDERLINE=$(tput smul)
+RED="\[\033[1;31m\]"
+GREEN="\[\033[1;32m\]"
+YELLOW="\[\033[1;33m\]"
+BLUE="\[\033[1;34m\]"
+MAGENTA="\[\033[0;35m\]"
+CYAN="\[\033[0;36m\]"
+RESET="\[\033[0m\]"
 
 # enable bash completion in interactive shells
 if ! shopt -oq posix; then
