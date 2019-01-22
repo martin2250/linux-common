@@ -3,4 +3,4 @@ Description=check linux-common git repo for updates
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/bash -c "$USER/linux-common/configuration/systemd/scripts/check-linux-common.sh"
+ExecStart=/usr/bin/bash -c "/home/$USER/linux-common/configuration/systemd/scripts/check-linux-common.sh"
