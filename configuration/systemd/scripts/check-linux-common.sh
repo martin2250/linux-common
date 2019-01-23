@@ -1,5 +1,7 @@
 #!/bin/bash
 
+alias CMD_AVAILABLE='command -v > /dev/null 2>&1'
+
 STATUSFILE="/run/user/$UID/update-linux-common"
 
 cd ~/linux-common || (printf "linux-common not found\n"; exit 1)
