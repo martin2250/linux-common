@@ -28,9 +28,9 @@ alias clipget='xclip -selection c -o'	# get clipboard to stdout
 alias clipset='xclip -selection c'		# set clipboard from stdin
 
 # replace commands
-if CMD_AVAILABLE bat; then
-	alias cat='bat'
-fi
+# if CMD_AVAILABLE bat; then
+#	alias cat='bat'
+# fi
 
 if CMD_AVAILABLE htop; then
 	alias top='htop'
