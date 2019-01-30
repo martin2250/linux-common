@@ -15,6 +15,9 @@ function term { gnome-terminal --quiet --working-directory="$(realpath ${1:-$(pw
 # make new directory (can contain new subdirectories) and cd into it
 function mkcd { mkdir "$1" && cd "$1"; }
 
+# show full path of file
+function path { echo "$PWD/$1"; }
+
 # extract compressed file
 function extract () {
 	if [ -f "$1" ] ; then
