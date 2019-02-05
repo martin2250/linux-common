@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# exit when run non-interactively
+if [[ $- != *i* ]]
+then
+	exit 0
+fi
+
 # test if command available
 alias CMD_AVAILABLE='command -v > /dev/null 2>&1'
 
