@@ -18,6 +18,9 @@ function mkcd { mkdir "$1" && cd "$1"; }
 # show full path of file
 function path { echo "$PWD/$1"; }
 
+# list serial ports
+function lserial { cd /dev/serial/by-id/; for id in *; do echo -e "$(realpath --relative-to /dev/ $id)\t$id"; done }
+
 # extract compressed file
 function extract () {
 	if [ -f "$1" ] ; then
