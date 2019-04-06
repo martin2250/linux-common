@@ -32,6 +32,8 @@ parser.add_argument('--blacklist', action='append',
                     help='don\'t sync files that match this glob pattern, can be specified multiple times')
 parser.add_argument('--modify-window', metavar='interval', type=float, default=2,
                     help='do not sync files whose times are within <interval> (seconds)')
+parser.add_argument('--timeoffset', metavar='hours', type=float, default=0,
+                    help='add an offset to the LOCAL file mtime (in hours)')
 
 try:
 	import argcomplete
@@ -68,7 +70,7 @@ for directory_name, _, file_names in os.walk(args.local):
 	for file_name in file_names:
 		dir_rel = os.path.relpath(directory_name, args.local)
 		path_abs = os.path.join(directory_name, file_name)
-		mtime = os.path.getmtime(path_abs)
+		mtime = os.path.getmtime(path_abs) + args.timeoffset * 60 * 60
 		size = os.path.getsize(path_abs)
 
 		files_local.append(FileInfo(dir_rel, file_name, mtime, size))
