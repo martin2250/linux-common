@@ -30,6 +30,12 @@ sudo usermod -aG uucp $USER
 sudo usermod -aG lock $USER
 ```
 
+## give permissions for UsbTinyISP:
+`sudo nano /etc/udev/rules.d/99-UsbTinyISP.rules`
+```
+SUBSYSTEM=="usb", ATTR{product}=="USBtinySPI", ATTR{idProduct}=="0c9f", ATTRS{idVendor}=="1781", MODE="0666", GROUP="uucp"
+```
+
 ## dconf
 
 ##### Monitor for changes (find keys)
