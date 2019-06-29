@@ -2,7 +2,7 @@
 ```bash
 ## first pacman -S required, second optional
 # tools
-sudo pacman -S fzf bat htop screen traceroute nmon nmap jq vim perf p7zip git wget bash-completion fd
+sudo pacman -S fzf bat htop screen traceroute nmon nmap jq vim perf p7zip git wget bash-completion fd iftop
 sudo pacman -S docker tldr platformio-git windscribe-cli android-tools imagemagick libqalculate
 
 # gui
