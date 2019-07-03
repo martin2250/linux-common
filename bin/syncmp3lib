@@ -1,192 +1,473 @@
 #!/usr/bin/env python
 # PYTHON_ARGCOMPLETE_OK
+
 import argparse
-import os.path
+import datetime
+import multiprocessing
+import os
+import pathlib
+import stat
+import subprocess
+import time
+from collections import deque
+from dataclasses import dataclass
+from typing import Deque, Dict, List
 
-# TODO:
-# check for rogue (empty) folders
-# combine rogue input + output
-
-parser = argparse.ArgumentParser(
-	description='converts a music library to lower quality mp3',
-	epilog='can be used to only scale cover images by specifying quality \'copy\'')
-
-
-def check_directory_exists(dir):
-	if not os.path.isdir(dir):
-		parser.error(f'directory {dir} does not exist!')
-	else:
-		return os.path.abspath(dir)
+################################################################################
+# whitelist
 
 
-parser.add_argument('inputpath', metavar='IN',
-                    type=check_directory_exists, help='input path, must exist')
-parser.add_argument('outputpath', metavar='OUT',
-                    type=os.path.abspath, help='output path, will be created if it doesn\'t exist')
-parser.add_argument('mp3_quality', metavar='Q', type=str,
-                    help='quality argument for libmp3lame (0-9 or copy). copy does not work with input files other than *.mp3', choices=list(map(str, range(0, 10))) + ['copy'])
-parser.add_argument('-c', '--clean', action='store_true',
-                    help='remove rogue files in input and output')
-parser.add_argument('--cover-scale', metavar='SIZE',
-                    type=int, help='rescale covers to SIZExSIZE, a size of 0 discards the cover, omitting this argument copies the cover')
-parser.add_argument('--limit', metavar='COUNT', type=int,
-                    help='only convert the first COUNT files')
-parser.add_argument('-j', '--threads', metavar='THREADS', type=int,
-                    help='number of ffmpeg subprocesses to use, use all cores by default')
-parser.add_argument('-y', '--yes', action='store_true',
-                    help='skip action selection menu')
+def read_whitelist(path: str) -> List[pathlib.PurePath]:
+	"""Read whitelist file specified by path, return lines as PurePaths"""
+	path = pathlib.Path(path)
+	with path.open() as whitelist_file:
+		return [pathlib.PurePath(line.strip()) for line in whitelist_file if line.strip()]
 
-try:
-	import argcomplete
-	argcomplete.autocomplete(parser)
-except:
-	pass
 
-args = parser.parse_args()
+def match_whitelist(path: pathlib.PurePath, whitelist: List[pathlib.PurePath]) -> bool:
+	"""Check wether a given path is included in the whitelist"""
+	if not whitelist:
+		return True
 
-if True:
-	import concurrent.futures
-	import datetime
-	import multiprocessing
-	import os
-	import subprocess
-	import sys
-	import time
-	from dataclasses import dataclass
+	for pattern in whitelist:
+		if pattern in path.parents:
+			return True
 
-inputpath = args.inputpath
-outputpath = args.outputpath
+	return False
 
-print('input path: ', inputpath)
-print('output path:', outputpath)
+
+################################################################################
+# scan and analyze file lists
 
 
 @dataclass
-class InputFile:
-	input: str
-	output: str
-	inputmtime: float
-	outputmtime: float  # None if file doesn't exist
+class FileInfo:
+	stat: os.stat_result
+	path: pathlib.Path = None
+	path_rel: pathlib.Path = None
+
+	def is_file(self):
+		return stat.S_ISREG(self.stat.st_mode)
+
+	def is_dir(self):
+		return stat.S_ISDIR(self.stat.st_mode)
+
+	def size(self):
+		return self.stat.st_size
+
+	def mtime(self):
+		return self.stat.st_mtime
 
 
-files = []
-rogue_files_input = []
-rogue_files_output = []
+def scan(path: pathlib.PurePath):
+	"""Scan a path for files and empty directories"""
 
-extensions = ['.mp3', '.m4a', '.wav', '.aac', '.flac', '.wma']
+	path = pathlib.Path(path)
 
-
-def listfiles(path):
-	""" get a list of all files in path, recursively"""
-	for directory_name, _, file_names in os.walk(path):
+	for directory_name, dir_names, file_names in os.walk(path):
 		for file_name in file_names:
-			yield os.path.relpath(directory_name, path), file_name
+			child = path / pathlib.Path(os.path.join(directory_name, file_name))
+			info = FileInfo(os.lstat(child), child, child.relative_to(path))
+			yield info
+
+		if not (dir_names or file_names):
+			child = path / pathlib.Path(directory_name)
+			info = FileInfo(os.lstat(child), child, child.relative_to(path))
+			yield info
 
 
-print('scanning output directory', end='')
-sys.stdout.flush()  # doesn't flush automatically without line ending
-rogue_files_output = [os.path.normpath(os.path.join(outputpath, d, f))
-                      for d, f in listfiles(outputpath)]
-print(f', found {len(rogue_files_output)} files')
+def scan_path(
+	files: List[FileInfo],
+	rogue: List[FileInfo],
+	path: pathlib.PurePath):
+	"""Scan path, append all files to files and all empty folders to rogue"""
 
-print('scanning input directory')
-
-for directory_relative, filename in listfiles(inputpath):
-	filename_base, extension = os.path.splitext(filename)
-
-	file_path_input = os.path.normpath(
-		os.path.join(inputpath, directory_relative, filename))
-
-	if extension in extensions:
-		file_path_output = os.path.normpath(os.path.join(
-			outputpath, directory_relative, filename_base + '.mp3'))
-
-		input_mtime = os.path.getmtime(file_path_input)
-		output_mtime = os.path.getmtime(
-			file_path_output) if os.path.isfile(file_path_output) else None
-
-		files.append(InputFile(file_path_input, file_path_output,
-                         input_mtime, output_mtime))
-
-		if file_path_output in rogue_files_output:
-			rogue_files_output.remove(file_path_output)
-	else:
-		rogue_files_input.append(file_path_input)
-
-print(f'found {len(files)} music files')
+	for info in scan(path):
+		if info.is_file():
+			files.append(info)
+		elif info.is_dir():
+			rogue.append(info)
 
 
-def delete_checkdir(path):
+def analyze_output(
+	files_input: List[FileInfo],
+	files_output: List[FileInfo],
+	rogue_output: List[FileInfo],
+	whitelist: List[pathlib.PurePath]) -> List[FileInfo]:
+	"""Check output folder for rogue files"""
+
+	# dict is faster for 'in'
+	input_relpaths_strs = {str(info_input.path_rel.with_suffix(
+		'.mp3')): True for info_input in files_input}
+
+	for info_output in files_output:
+		if info_output.path.suffix != '.mp3':
+			rogue_output.append(info_output)
+			continue
+
+		if whitelist and not match_whitelist(info_output.path_rel, whitelist):
+			rogue_output.append(info_output)
+			continue
+
+		if str(info_output.path_rel) not in input_relpaths_strs:
+			rogue_output.append(info_output)
+
+	return [info_output for info_output in files_output if info_output not in rogue_output]
+
+
+def analyze_input(
+	files_input: List[FileInfo],
+	files_output: List[FileInfo],
+	files_convert: List[FileInfo],
+	rogue_input: List[FileInfo],
+	whitelist: List[pathlib.PurePath],
+	extensions: List[str]) -> List[FileInfo]:
+	"""Check input folder for files that need to be converted and rogues"""
+
+	output_relpaths_dict: Dict[str, FileInfo] = \
+		{str(info_output.path_rel): info_output for info_output in files_output}
+
+	for info_input in files_input:
+		if info_input.path.suffix not in extensions:
+			rogue_input.append(info_input)
+			continue
+
+		if whitelist and not match_whitelist(info_input.path_rel, whitelist):
+			continue
+
+		info_input_relpath = str(info_input.path_rel.with_suffix('.mp3'))
+
+		if info_input_relpath in output_relpaths_dict:
+			if output_relpaths_dict[info_input_relpath].mtime() != info_input.mtime():
+				files_convert.append(info_input)
+		else:
+			files_convert.append(info_input)
+
+	return [info_input for info_input in files_input if info_input not in rogue_input]
+
+
+################################################################################
+# rogue file handling
+
+def delete_checkdir(path: pathlib.PurePath):
 	"""delete file or directory, also delete parent directories if they are empty"""
 	while True:
-		if os.path.isfile(path):
-			os.remove(path)
+		if path.is_file():
+			path.unlink()
 		else:
-			os.rmdir(path)
-		path = os.path.dirname(path)
+			path.rmdir()
+		path = path.parent
 		if os.listdir(path):
 			break
 
-
-def delete_rogues():
-	global rogue_files_input, rogue_files_output
-	for rogue_file in (rogue_files_input + rogue_files_output):
-		print(f' > {rogue_file}')
-		delete_checkdir(rogue_file)
-	rogue_files_input = []
-	rogue_files_output = []
+################################################################################
+# ffmpeg interface
 
 
-for name, rogue_files in [('input', rogue_files_input), ('output', rogue_files_output)]:
-	if rogue_files:
-		print(f'found {len(rogue_files)} rogue files in the {name} directory{", removing rogue files" if args.clean else ""}:')
-		if args.clean:
-			delete_rogues()
+@dataclass
+class ConvertItem:
+	file_input: FileInfo
+	args: argparse.Namespace
+	process: subprocess.Popen = None
 
+	def path_output(self) -> pathlib.Path:
+		return self.args.outputpath / self.file_input.path_rel.with_suffix('.mp3')
 
-files = [file for file in files if file.inputmtime != file.outputmtime]
-print(f'{len(files)} files need to be converted')
-
-if args.limit is not None:
-	print(f'limiting to {args.limit} files')
-	files = files[:args.limit]
-
-
-def get_command(file):
-	""" create ffmpeg command to convert the file """
-	command = [
-		'ffmpeg',
-		'-i', file.input,
-		'-map', '0',
-		'-y',
-		'-hide_banner'
-	]
-
-	if args.mp3_quality == 'copy':
-		command += ['-c:a', 'copy']
-	else:
-		command += [
-			'-c:a', 'libmp3lame',
-			'-q:a', args.mp3_quality
+	def get_command(self) -> List[str]:
+		""" create ffmpeg command to convert the file """
+		command = [
+			'ffmpeg',
+			'-i', str(self.file_input.path),
+			'-map', '0',
+			'-y',
+			'-hide_banner'
 		]
 
-	if args.cover_scale is None:
-		command += ['-c:v', 'copy']
-	else:
-		if args.cover_scale == 0:
-			command += ['-vn']
+		if self.args.mp3_quality == 'copy':
+			command += ['-c:a', 'copy']
 		else:
 			command += [
-				'-c:v', 'mjpeg',
-				'-vf', f'scale={args.cover_scale}:{args.cover_scale}'
+				'-c:a', 'libmp3lame',
+				'-q:a', self.args.mp3_quality
 			]
 
-	command += [file.output]
-	return command
+		if self.args.cover_scale is None:
+			command += ['-c:v', 'copy']
+		else:
+			if self.args.cover_scale == 0:
+				command += ['-vn']
+			else:
+				command += [
+					'-c:v', 'mjpeg',
+					'-vf', f'scale={self.args.cover_scale}:{self.args.cover_scale}'
+				]
+
+		command += [str(self.path_output())]
+
+		return command
+
+	def run(self):
+		path_output = self.path_output()
+
+		if path_output.exists():
+			path_output.unlink()
+
+		path_output.parent.mkdir(parents=True, exist_ok=True)
+
+		command = self.get_command()
+
+		self.process = subprocess.Popen(
+			command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+################################################################################
+# actual worker
 
 
-# action selection menu
-if not args.yes:
+def convert(convert_todo: Deque[ConvertItem], args: argparse.Namespace):
+	working: List[ConvertItem] = []
+	convert_done: List[ConvertItem] = deque()
+	count_total = len(convert_todo)
+	count_success = 0
+	count_error = 0
+
+	try:
+		time_start = time.time()
+
+		while convert_todo or working:
+			for i in range(len(working) - 1, -1, -1):
+				worker = working[i]
+				if worker.process.poll() is not None:
+					if worker.process.returncode == 0:
+						os.utime(
+							str(worker.path_output()),
+							(worker.file_input.mtime(), worker.file_input.mtime()))
+						count_success += 1
+					else:
+						count_error += 1
+						worker.path_output().unlink()
+
+					convert_done.append(working[i])
+					del working[i]
+
+			while convert_todo and len(working) < args.threads:
+				worker = convert_todo.pop()
+				worker.run()
+				working.append(worker)
+
+			elapsed = int(time.time() - time_start)
+			print(
+				f'{len(working)} threads '
+				f'{count_success}/{count_total} files converted '
+				f'in {str(datetime.timedelta(seconds=elapsed))} '
+				f'{count_error} errors', end='\r')
+
+			time.sleep(0.01)
+
+	except KeyboardInterrupt:
+		print()
+		print('\nKeyboardInterrupt. stopping workers and cleaning up partial files')
+		for worker in working:
+			worker.process.kill()
+			worker.path_output().unlink()
+		exit(1)
+
+	print('\ndone')
+	if count_error:
+		for worker in convert_done:
+			print(f'{worker.process.returncode}\t{worker.file_input.path_rel}')
+
+################################################################################
+# argparser
+
+
+def parse_args():
+	parser = argparse.ArgumentParser(
+		description='converts a music library to lower quality mp3',
+		epilog='can be used to only scale cover images by specifying quality \'copy\'')
+
+	def check_directory_exists(path):
+		path = pathlib.Path(path).resolve()
+		if not path.is_dir():
+			parser.error(f'directory {path} does not exist!')
+		else:
+			return path
+
+	def dont_check_directory_exists(path):
+		path = pathlib.Path(path).resolve()
+		return path
+
+	def check_file_exists(path):
+		path = pathlib.Path(path).resolve()
+		if not path.is_file():
+			parser.error(f'file {path} does not exist!')
+		else:
+			return path
+
+	parser.add_argument(
+		'inputpath',
+		metavar='IN',
+		type=check_directory_exists,
+		help='input path, must exist')
+	parser.add_argument(
+		'outputpath',
+		metavar='OUT',
+		type=dont_check_directory_exists,
+		help='output path, will be created if it doesn\'t exist')
+	parser.add_argument(
+		'mp3_quality',
+		metavar='Q',
+		type=str,
+		help='quality argument for libmp3lame (0-9 or copy). copy does not work with input files other than *.mp3',
+		choices=list(map(str, range(0, 10))) + ['copy'])
+	parser.add_argument(
+		'commands',
+		metavar='CMD',
+		type=str,
+		nargs='*',
+		help='list of commands to execute automatically')
+	#   choices=[])
+
+	parser.add_argument(
+		'-c', '--clean',
+		action='store_true',
+		help='remove rogue files and empty directories in input and output')
+	parser.add_argument(
+		'--cover-scale',
+		metavar='SIZE',
+		type=int,
+		help='rescale covers to SIZExSIZE, a size of 0 discards the cover, omitting this argument copies the cover')
+	parser.add_argument(
+		'--limit',
+		metavar='COUNT',
+		type=int,
+		help='only convert the first COUNT files')
+	parser.add_argument(
+		'-j', '--threads',
+		metavar='THREADS',
+		type=int,
+		help='number of ffmpeg subprocesses to use, use all cores by default')
+	parser.add_argument(
+		'-w', '--whitelist',
+		metavar='WLFILE',
+		type=check_file_exists,
+		help='number of ffmpeg subprocesses to use, use all cores by default')
+	parser.add_argument(
+		'-y', '--yes',
+		action='store_true',
+		help='skip action selection menu')
+	parser.add_argument(
+		'--extensions',
+		type=lambda s: ['.' + ext for ext in s.split(',')],
+		help='comma separated list of extensions to accept',
+		default=['.mp3', '.m4a', '.wav', '.aac', '.flac', '.wma'])
+
+	################################################################################
+	# argcomplete
+
+	try:
+		import argcomplete
+
+		argcomplete.autocomplete(parser)
+	except:
+		pass
+
+	return parser.parse_args()
+
+# ################################################################################
+# # user interface
+
+
+def main():
+
+	args = parse_args()
+
+	###########################################################################
+	# complete args
+	if not args.threads:
+		args.threads = multiprocessing.cpu_count()
+
+	if args.whitelist:
+		args.whitelist = read_whitelist(args.whitelist)
+
+	###########################################################################
+	# scan folders
+	files_input: List[FileInfo] = []
+	files_output: List[FileInfo] = []
+	rogue_input: List[FileInfo] = []
+	rogue_output: List[FileInfo] = []
+
+	print('scanning input directory')
+	scan_path(files_input, rogue_input, args.inputpath)
+	print('scanning output directory')
+	scan_path(files_output, rogue_output, args.outputpath)
+
+	###########################################################################
+	# analyze folders
+	files_convert: List[FileInfo] = []
+
+	files_output = analyze_output(
+		files_input=files_input,
+		files_output=files_output,
+		rogue_output=rogue_output,
+		whitelist=args.whitelist)
+
+	files_input = analyze_input(
+		files_input=files_input,
+		files_output=files_output,
+		files_convert=files_convert,
+		rogue_input=rogue_input,
+		whitelist=args.whitelist,
+		extensions=args.extensions)
+
+	print('input path:')
+	print(f'\t{len(files_input)} music files')
+	print(f'\t{len(rogue_input)} rogue files')
+
+	print('output path:')
+	print(f'\t{len(files_output)} music files')
+	print(f'\t{len(rogue_output)} rogue files')
+
+	print(f'{len(files_convert)} files out-of-date')
+
+	if args.limit is not None:
+		print(f'limiting to {args.limit} files')
+		files_convert = files_convert[:args.limit]
+
+	convert_todo: Deque[FileInfo] = \
+		deque(ConvertItem(info_convert, args) for info_convert in files_convert)
+
+	###########################################################################
+	# process actions
+
+	def user_action(cmd: str):
+		nonlocal rogue_input, rogue_output, convert_todo, args
+
+		cmd = cmd.strip()
+		if cmd in ['c', 'convert']:
+			print('converting files')
+			convert(convert_todo, args)
+		elif cmd == 'q':
+			exit(0)
+		elif cmd in ['l', 'list']:
+			print('out-of-date files:')
+			for convertitem in convert_todo:
+				print(convertitem.file_input.path_rel)
+		elif cmd in ['lr', 'list rogue']:
+			print('rogue files:')
+			for rogue_file in (rogue_input + rogue_output):
+				print(f'  {rogue_file.path}')
+		elif cmd in ['dr', 'delete rogue']:
+			print('deleting rogue files')
+			for info_rogue in rogue_input + rogue_output:
+				delete_checkdir(info_rogue.path)
+			rogue_input = []
+			rogue_output = []
+		else:
+			print('unsupported action')
+
+	for cmd in args.commands:
+		user_action(cmd.strip())
+
 	while True:
 		print("""select action:
 		[list] files to be converted
@@ -195,99 +476,11 @@ if not args.yes:
 		[delete rogue] files
 		[y]/[convert]
 		[n]/[q]uit""")
-		action = input('action: ').strip()
-
-		if action in ['y', 'convert']:
-			break
-		elif action in ['n', 'q']:
-			exit(0)
-		elif action == 'list':
-			for file in files:
-				print(file.input)
-				if file.outputmtime is None:
-					print('does not exist in the output directory')
-				else:
-					print(f'in: {file.inputmtime} out: {file.outputmtime}')
-		elif action == 'list cmd':
-			for file in files:
-				print(' '.join(get_command(file)))
-		elif action == 'list rogue':
-			for rogue_file in (rogue_files_input + rogue_files_output):
-				print(f' > {rogue_file}')
-		elif action == 'delete rogue':
-			delete_rogues()
-		else:
-			print('unsupported action')
+		cmd = input('action: ').strip()
+		user_action(cmd)
 
 
-def convert(file):
-	""" prepare and start conversion with ffmpeg process, returns handle to ffmpeg process """
-	command = get_command(file)
+################################################################################
 
-	if os.path.exists(file.output):
-		os.remove(file.output)
-	if not os.path.isdir(os.path.dirname(file.output)):
-		os.makedirs(os.path.dirname(file.output))
-
-	return subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-@dataclass
-class Worker:
-	file: InputFile
-	process: subprocess.Popen
-
-
-@dataclass
-class Error:
-	file: InputFile
-	retcode: int
-
-
-workers = []
-errors = []
-
-try:
-	cpu_count = args.threads or multiprocessing.cpu_count()
-	total = len(files)
-	done = 0
-	time_start = time.time()
-
-	while files or workers:
-		# check running workers
-		for i in range(len(workers) - 1, -1, -1):
-			worker = workers[i]
-			if worker.process.poll() is not None:
-				if worker.process.returncode == 0:
-					os.utime(worker.file.output,
-					         (worker.file.inputmtime, worker.file.inputmtime))
-					done += 1
-				else:
-					error = Error(worker.file, worker.process.returncode)
-					errors.append(error)
-					os.remove(worker.file.output)
-				del workers[i]
-
-		# restock workers
-		while files and len(workers) < cpu_count:
-			file = files.pop(0)
-			worker = Worker(file, convert(file))
-			workers.append(worker)
-
-		elapsed = int(time.time() - time_start)
-		print(f'{len(workers)} workers, {done}/{total} files converted in {str(datetime.timedelta(seconds=elapsed))}, {len(errors)} errors', end='\r')
-		time.sleep(0.01)
-
-except KeyboardInterrupt:
-	print()
-	print('KeyboardInterrupt. stopping workers and cleaning up partial files')
-	for worker in workers:
-		worker.process.kill()
-		os.remove(worker.file.output)
-
-print('\ndone')
-if errors:
-	print('errors:')
-	print('RET\tFILE')
-	for error in errors:
-		print(f'{error.retcode}\t{error.file.input}')
+if __name__ == '__main__':
+	main()

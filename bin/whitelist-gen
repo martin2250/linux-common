@@ -1,0 +1,135 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
+
+import argparse
+import os
+import pathlib
+from dataclasses import dataclass
+from typing import Deque, Dict, List
+
+import npyscreen
+
+
+@dataclass
+class Folder:
+	path_rel: pathlib.Path
+	children: list
+
+
+def scan(root: pathlib.Path, path: pathlib.Path):
+	folder = Folder(path.relative_to(root), [])
+	for p in path.iterdir():
+		if p.is_dir():
+			folder.children.append(scan(root, p))
+	return folder
+
+
+def parse_args():
+	parser = argparse.ArgumentParser(
+		description='converts a music library to lower quality mp3',
+		epilog='can be used to only scale cover images by specifying quality \'copy\'')
+
+	def check_directory_exists(path):
+		path = pathlib.Path(path).resolve()
+		if not path.is_dir():
+			parser.error(f'directory {path} does not exist!')
+		else:
+			return path
+
+	def check_file_exists(path):
+		path = pathlib.Path(path).resolve()
+		if not path.is_file():
+			parser.error(f'file {path} does not exist!')
+		else:
+			return path
+
+	parser.add_argument(
+		'root',
+		type=check_directory_exists,
+		help='root folder')
+
+	parser.add_argument(
+		'whitelist',
+		type=check_file_exists,
+		help='whitelist file')
+
+	try:
+		import argcomplete
+
+		argcomplete.autocomplete(parser)
+	except:
+		pass
+
+	return parser.parse_args()
+
+
+def read_whitelist(path: str) -> Dict[str, bool]:
+	"""Read whitelist file specified by path, return lines as PurePaths"""
+	path = pathlib.Path(path)
+	with path.open() as whitelist_file:
+		return {line.strip(): True for line in whitelist_file if line.strip()}
+
+
+def match_whitelist(path, whitelist) -> bool:
+	"""Check wether a given path is included in the whitelist"""
+
+	if not whitelist:
+		return True
+
+	if str(path) in whitelist:
+		return True
+
+	for parent in path.parents:
+		if str(parent) in whitelist:
+			return True
+
+	return False
+
+
+def write_whitelist(file, path, item):
+	if item.selected:
+		print(item.content, file=file)
+	else:
+		for child in item.get_children():
+			write_whitelist(file, os.path.join(path, item.content), child)
+
+
+class App(npyscreen.NPSApp):
+	def main(self):
+		args = parse_args()
+
+		root = pathlib.Path(args.root)
+		whitelist = read_whitelist(args.whitelist)
+
+		folders = scan(root, root)
+
+		F = npyscreen.Form(name="Whitelist Editor")
+		wgtree = F.add(npyscreen.MLTreeMultiSelect)
+
+		treedata = npyscreen.TreeData(ignore_root=True)
+
+		def add(parent, folder):
+			selected = match_whitelist(folder.path_rel, whitelist)
+
+			child = parent.new_child(content=str(folder.path_rel),
+                            expanded=False, selected=selected)
+			for fc in folder.children:
+				add(child, fc)
+
+		for f in folders.children:
+			add(treedata, f)
+
+		wgtree.values = treedata
+
+		F.edit()
+
+		with open(args.whitelist, 'w') as file:
+			for child in treedata.get_children():
+				write_whitelist(file, '', child)
+
+
+################################################################################
+
+if __name__ == "__main__":
+	app = App()
+	app.run()
