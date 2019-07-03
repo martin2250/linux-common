@@ -7,78 +7,301 @@ import fnmatch
 import os.path
 import time
 from dataclasses import dataclass
+import pathlib
+import subprocess
+from typing import Deque, Dict, List
 
-import adb.adb_commands
-import adb.sign_m2crypto
-
-parser = argparse.ArgumentParser(
-	description='sync files to an android phone, keeping the timestamp like rsync -t')
-
-parser.add_argument('local', type=os.path.abspath,
-                    help='local path, used as source with direction to_remote')
-parser.add_argument('remote',
-                    help='remote path, used as source with direction from_remote')
-parser.add_argument('direction', choices=[
-                    'to_remote', 'from_remote'], help='copy file to or from the android device')
-
-parser.add_argument('-y', '--yes', action='store_true',
-                    help='sync without confirmation')
-parser.add_argument('--delete', action='store_true',
-                    help='delete files that only exist in the destination (only works with yes)')
-
-parser.add_argument('--whitelist', action='append',
-                    help='only sync files that match this glob pattern, can be specified multiple times')
-parser.add_argument('--blacklist', action='append',
-                    help='don\'t sync files that match this glob pattern, can be specified multiple times')
-parser.add_argument('--modify-window', metavar='interval', type=float, default=2,
-                    help='do not sync files whose times are within <interval> (seconds)')
-parser.add_argument('--timeoffset', metavar='hours', type=float, default=0,
-                    help='add an offset to the LOCAL file mtime (in hours)')
-
-try:
-	import argcomplete
-	argcomplete.autocomplete(parser)
-except:
-	pass
-
-args = parser.parse_args()
-
-if args.direction == 'to_remote':
-	print(f'syncing local:{args.local} to adb:{args.remote}')
-else:
-	print(f'syncing adb:{args.remote} to local:{args.local}')
 
 ################################################################################
+# find command wrapper
 
-print('scanning local directory')
+
+def get_find_command(path, local):
+	cmd = []
+
+	cmd += ['find', str(path), '-type', 'f', '-exec']
+
+	cmd += ['stat', '-c', '%n~~%Y~~%s', '{}', ';']
+
+	if not local:
+		cmd = ['adb', 'shell'] + [f'"{p}"' for p in cmd]
+
+	return cmd
 
 
 @dataclass
 class FileInfo:
-	path: str
-	name: str
-	mtime: float
+	path_rel: pathlib.PurePath
+	path: pathlib.PurePath
+	mtime: int
 	size: int
 
+def parse_find_result(path_root, results):
+	for line in results:
+		parts = line.split('~~')
 
-files_local = []
-folders_empty_local = []
+		if len(parts) != 3:
+			continue
 
-for directory_name, _, file_names in os.walk(args.local):
-	if not file_names:
-		folders_empty_local.append(directory_name)
-	for file_name in file_names:
-		dir_rel = os.path.relpath(directory_name, args.local)
-		path_abs = os.path.join(directory_name, file_name)
-		mtime = os.path.getmtime(path_abs) + args.timeoffset * 60 * 60
-		size = os.path.getsize(path_abs)
+		try:
+			path = pathlib.PurePath(parts[0])
 
-		files_local.append(FileInfo(dir_rel, file_name, mtime, size))
+			if path_root not in path.parents:
+				print(f'path {path} not subdir of {path_root}')
+				for p in path.parents:
+					print(p)
+				continue
 
-filenames_local = [os.path.join(file.path, file.name)
-                   for file in files_local]
+			path_rel = path.relative_to(path_root)
 
-print(f'  > found {len(files_local)} files')
+			mtime = int(parts[1])
+			size = int(parts[2])
+		except:
+			continue
+
+		yield FileInfo(path_rel, path, mtime, size)
+
+
+def list_files(path_root: pathlib.PurePath, local):
+	cmd = get_find_command(path_root, local)
+
+	print(' '.join(cmd))
+
+	result = subprocess.run(cmd, encoding='utf-8', capture_output=True)
+
+	if result.returncode != 0:
+		print('nonzero return code of find command')
+		print(result)
+		exit()
+
+	return parse_find_result(path_root, result.stdout.split('\n'))
+
+
+################################################################################
+# diff tool
+
+def diff(files_source: List[FileInfo], files_dest: List[FileInfo]) -> (List[FileInfo], List[FileInfo]):
+	"""return list of files to sync and rogue files"""
+	files_rogue = []
+	files_sync = []
+
+	dict_source = {str(f.path): f for f in files_source}
+	dict_dest = {str(f.path): f for f in files_dest}
+
+	for file_dest in files_dest:
+		if not str(file_dest.path) in dict_source:
+			files_rogue.append(file_dest)
+
+	for file_source in files_source:
+		if not str(file_source.path) in dict_dest:
+			files_sync.append(file_source)
+			continue
+		file_dest = dict_dest[str(file_source.path)]
+		if file_dest.mtime != file_source.mtime or file_dest.size != file_source.size:
+			files_sync.append(file_source)
+
+	return files_sync, files_rogue
+
+
+################################################################################
+# adb push / pull
+
+def get_copy_command(path_source: pathlib.PurePath, path_dest: pathlib.PurePath, push: bool):
+	cmd = ['adb']
+
+	if push:
+		cmd += ['push']
+	else:
+		cmd += ['pull']
+
+	cmd += [str(path_source), str(path_dest)]
+
+	return cmd
+
+
+def copy(file_source: FileInfo, file_dest: FileInfo, push: bool):
+	cmd = get_copy_command(file_source.path, file_dest.path, push)
+
+	result = subprocess.run(cmd, encoding='utf-8', capture_output=True)
+
+	if result.returncode != 0:
+		print('nonzero return code of adb command')
+		print(result)
+		exit()
+
+	if not push:
+		os.utime(str(file_dest.path), (file_source.mtime, file_source.mtime))
+
+################################################################################
+# adb push / pull
+
+def get_rm_command(path_source: pathlib.PurePath, path_dest: pathlib.PurePath, push: bool):
+	cmd = ['adb', 'rm']
+
+	if push:
+		cmd += ['push']
+	else:
+		cmd += ['pull']
+
+	cmd += [str(path_source), str(path_dest)]
+
+	return cmd
+
+
+def copy(path_source: pathlib.PurePath, path_dest: pathlib.PurePath, push: bool):
+	cmd = get_copy_command(path_source, path_dest, push)
+
+	result = subprocess.run(cmd, encoding='utf-8', capture_output=True)
+
+	if result.returncode != 0:
+		print('nonzero return code of adb command')
+		print(result)
+		exit()
+
+################################################################################
+# argument parser
+
+class Interface(object):
+	def list_files(self, path_root: pathlib.PurePath):
+		raise NotImplementedError('Abstract')
+
+	def copy_file(self, file_source: FileInfo, path_dest: FileInfo):
+		raise NotImplementedError('Abstract')
+
+class PCInterface(Interface):
+	def list_files(self, path_root: pathlib.PurePath):
+		return list_files(path_root, True)
+
+	def copy_file(self, file_source: FileInfo, path_dest: pathlib.PurePath):
+		copy(file_source, path_dest, push=False)
+		os.utime(str(path_dest), (file_source.mtime, file_source.mtime))
+
+	def rm
+
+class ADBInterface(Interface):
+	def list_files(self, path_root: pathlib.PurePath):
+		return list_files(path_root, False)
+
+	def copy_file(self, file_source: FileInfo, path_dest: pathlib.PurePath):
+		copy(file_source, path_dest, push=True)
+
+
+################################################################################
+# argument parser
+
+
+def parse_args():
+	parser = argparse.ArgumentParser(
+		description='sync files to an android phone, keeping the timestamp like rsync -t')
+
+	def check_directory_exists(path):
+		path = pathlib.Path(path).resolve()
+		if not path.is_dir():
+			parser.error(f'directory {path} does not exist!')
+		else:
+			return path
+
+	parser.add_argument(
+		'local',
+		type=check_directory_exists,
+		help='local path, used as source with direction to_remote')
+	parser.add_argument(
+		'remote',
+		type=pathlib.PurePath,
+		help='remote path, used as source with direction from_remote')
+	parser.add_argument('direction', choices=[
+		'to_remote', 'from_remote'], help='copy file to or from the android device')
+
+	parser.add_argument(
+		'-y', '--yes',
+		action='store_true',
+		help='sync without confirmation')
+	parser.add_argument(
+		'--delete',
+		action='store_true',
+		help='delete files that only exist in the destination (only works with yes)')
+
+	parser.add_argument(
+		'--whitelist',
+		action='append',
+		help='only sync files that match this glob pattern, can be specified multiple times')
+	parser.add_argument(
+		'--blacklist',
+		action='append',
+		help='don\'t sync files that match this glob pattern, can be specified multiple times')
+	parser.add_argument(
+		'--modify-window',
+		metavar='interval', type=float, default=2,
+		help='do not sync files whose times are within <interval> (seconds)')
+
+	try:
+		import argcomplete
+		argcomplete.autocomplete(parser)
+	except:
+		pass
+
+	return parser.parse_args()
+
+################################################################################
+# main func
+
+
+def main():
+	args = parse_args()
+
+	print('scanning local files')
+	files_local = list_files(args.local, local=True)
+	print('scanning remote files')
+	files_remote = list_files(args.remote, local=False)
+
+	files_local = list(files_local)
+	files_remote = list(files_remote)
+
+	print(f'{len(files_local)} local files')
+	print(f'{len(files_remote)} remote files')
+
+	push = args.direction == 'to_remote'
+
+	files_source = files_local if push else files_remote
+	files_dest = files_remote if push else files_local
+
+	files_sync, files_rogue = diff(files_source, files_dest)
+
+	print(files_sync)
+	print(files_rogue)
+
+
+if __name__ == '__main__':
+	main()
+exit()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ################################################################################
 
@@ -115,7 +338,7 @@ def scan_path_remote(path):
 		if file_name in ['.', '..']:
 			continue
 		if mode_isdir(file.mode):
-				scan_path_remote(file_name_abs)
+			scan_path_remote(file_name_abs)
 		else:
 			files_remote.append(FileInfo(path_rel, file_name, file.mtime, file.size))
 
@@ -168,7 +391,8 @@ for (index_source, filename_source) in enumerate(filenames_source):
 		file_source = files_source[index_source]
 		file_destination = files_destination[filenames_destination.index(
 			filename_source)]
-		if (abs(file_source.mtime - file_destination.mtime) > args.modify_window) or (file_source.size != file_destination.size):
+		if (abs(file_source.mtime - file_destination.mtime) > args.modify_window) or (
+				file_source.size != file_destination.size):
 			indexes_files_to_sync.append(index_source)
 
 for (index_destination, filename_destination) in enumerate(filenames_destination):
@@ -195,7 +419,6 @@ if indexes_files_to_sync:
 		size_source += files_source[index_source].size
 	print(f'{len(indexes_files_to_sync)} files need to be synced ({human_size_from_bytes(size_source)})')
 
-
 if indexes_files_rogue:
 	size_destination = 0
 	for index_destination in indexes_files_rogue:
@@ -206,6 +429,7 @@ if folders_empty_destination:
 	print(f'{len(folders_empty_destination)} empty folders in destination')
 
 print()
+
 
 ################################################################################
 
@@ -252,7 +476,7 @@ def sync_files():
 	indexes_files_to_sync = []
 
 	duration = time.time() - time_start
-	print(f'total {human_size_from_bytes(size_synced)} synced in {duration:0.0f}s ({human_size_from_bytes(size_synced/duration)}/s)')
+	print(f'total {human_size_from_bytes(size_synced)} synced in {duration:0.0f}s ({human_size_from_bytes(size_synced / duration)}/s)')
 
 
 def delete_rogue_checkdir_remote(path_remote):
