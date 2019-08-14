@@ -21,7 +21,13 @@ while True:
 			print(f'status code {r.status_code} {url}')
 			continue
 		
-		l = list(r.json()['playlist'].values())[::-1]
+		playlist = r.json()['playlist']
+
+		# empty playlist is list, playlist should be a dict
+		if type(playlist) is list:
+			continue
+
+		l = list(playlist.values())[::-1]
 
 		for s in l:
 			print(f"{daystring} {s['time']} {s['artist']} - {s['track']}")
