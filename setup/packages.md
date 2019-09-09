@@ -4,6 +4,7 @@
 # tools
 sudo pacman -S fzf bat htop screen traceroute nmon nmap jq vim perf p7zip git wget bash-completion fd iftop
 sudo pacman -S docker tldr platformio-git windscribe-cli android-tools imagemagick libqalculate
+go get -u github.com/boyter/scc/
 
 # gui
 sudo pacman -S gitkraken inkscape atom gimp vlc qalculate-gtk blender thunderbird gparted pdfshuffler sonata audacity clementine
